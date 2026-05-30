@@ -4,6 +4,8 @@ const cors = require('cors');
 const path = require('path');
 const axios = require('axios');
 const session = require('express-session');
+const RedisStore = require('connect-redis')(session);
+const redis = require('redis');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -31,14 +33,37 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname)));
 
-// Session Middleware
+// Session Middleware with Redis support for Railway
+let sessionStore;
+if (process.env.REDIS_URL) {
+    // Use Redis for production (Railway provides Redis)
+    const redisClient = redis.createClient({
+        url: process.env.REDIS_URL
+    });
+    
+    redisClient.connect().catch(err => {
+        console.error('Redis connection error:', err);
+    });
+    
+    sessionStore = new RedisStore({
+        client: redisClient,
+        prefix: 'farmers-consensus:'
+    });
+} else {
+    // Fallback to MemoryStore for development
+    console.warn('⚠️ Using MemoryStore for sessions - not suitable for production');
+    sessionStore = new session.MemoryStore();
+}
+
 app.use(session({
     secret: ADMIN_SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
+    store: sessionStore,
     cookie: { 
-        secure: false, // Set to true in production with HTTPS
-        maxAge: 3600000 // 1 hour
+        secure: process.env.NODE_ENV === 'production', // HTTPS only in production
+        maxAge: 3600000, // 1 hour
+        sameSite: 'lax'
     }
 }));
 
@@ -475,8 +500,9 @@ app.get('*', (req, res) => {
 });
 
 // Start server
-app.listen(PORT, () => {
-    console.log(`🌾 Farmers Consensus API Server running on port ${PORT}`);
+app.listen(process.env.PORT || PORT, () => {
+    const actualPort = process.env.PORT || PORT;
+    console.log(`🌾 Farmers Consensus API Server running on port ${actualPort}`);
     console.log(`🧀 Connected to Cheese Blockchain at ${CHEESE_API_URL}`);
-    console.log(`📱 Frontend available at http://localhost:${PORT}`);
+    console.log(`📱 Frontend available at http://localhost:${actualPort}`);
 });
