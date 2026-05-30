@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#0b110e">
+    <title>Farmers Consensus - Admin Panel</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Admin Login Section -->
+        <div id="admin-login-section" class="admin-login-container">
+            <div class="admin-login-card card">
+                <div class="login-header">
+                    <div class="login-icon">
+                        <i data-lucide="shield"></i>
+                    </div>
+                    <h1>Admin Panel</h1>
+                    <p>Farmers Consensus Administration</p>
+                </div>
+                
+                <form id="admin-login-form" class="login-form">
+                    <div class="form-group">
+                        <label>Username</label>
+                        <input type="text" id="admin-username" placeholder="Enter admin username" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Password</label>
+                        <input type="password" id="admin-password" placeholder="Enter admin password" required>
+                    </div>
+                    
+                    <button type="submit" class="btn-primary btn-full">
+                        <i data-lucide="log-in"></i>
+                        <span>Login to Admin Panel</span>
+                    </button>
+                </form>
+                
+                <div id="login-error" class="error-message hidden"></div>
+                
+                <div class="login-footer">
+                    <a href="/">← Back to Main Site</a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Admin Dashboard Section (Hidden by default) -->
+        <div id="admin-dashboard-section" class="admin-dashboard hidden">
+            <!-- Admin Header -->
+            <header class="admin-header">
+                <div class="header-content">
+                    <div class="brand">
+                        <div class="brand-icon">🧀</div>
+                        <div>
+                            <h1>Farmers Consensus Admin</h1>
+                            <p>Cheese Blockchain Revenue Analytics</p>
+                        </div>
+                    </div>
+                    <div class="admin-controls">
+                        <button id="admin-logout-btn" class="btn-secondary">
+                            <i data-lucide="log-out"></i>
+                            <span>Logout</span>
+                        </button>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Revenue Dashboard -->
+            <div class="revenue-dashboard card animate-fade-in">
+                <div class="card-header">
+                    <div class="card-title-icon purple">
+                        <i data-lucide="trending-up"></i>
+                    </div>
+                    <div>
+                        <h3>🧀 Cheese Blockchain Revenue Analytics</h3>
+                        <p>Real-time revenue tracking from Farmers Consensus platform</p>
+                    </div>
+                    <div class="revenue-controls">
+                        <select id="revenue-timeframe" class="province-filter">
+                            <option value="all">All Time</option>
+                            <option value="7d">Last 7 Days</option>
+                            <option value="30d">Last 30 Days</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="revenue-metrics-grid">
+                    <div class="revenue-metric">
+                        <span class="revenue-metric-label">Total Revenue</span>
+                        <span class="revenue-metric-value" id="revenue-total">0.0 NCH</span>
+                        <span class="revenue-metric-change" id="revenue-growth">+0.0%</span>
+                    </div>
+                    <div class="revenue-metric">
+                        <span class="revenue-metric-label">Total Transactions</span>
+                        <span class="revenue-metric-value" id="revenue-transactions">0</span>
+                    </div>
+                    <div class="revenue-metric">
+                        <span class="revenue-metric-label">Avg Fee/Transaction</span>
+                        <span class="revenue-metric-value" id="revenue-avg-fee">0.0 NCH</span>
+                    </div>
+                </div>
+
+                <div class="revenue-breakdown-grid">
+                    <div class="revenue-breakdown-item">
+                        <div class="revenue-breakdown-header">
+                            <span>Transaction Fees</span>
+                            <span class="revenue-breakdown-amount" id="revenue-transaction-fees">0.0 NCH</span>
+                        </div>
+                        <div class="revenue-breakdown-bar">
+                            <div class="revenue-breakdown-fill" id="revenue-transaction-bar" style="width: 0%"></div>
+                        </div>
+                    </div>
+                    <div class="revenue-breakdown-item">
+                        <div class="revenue-breakdown-header">
+                            <span>Premium Fees</span>
+                            <span class="revenue-breakdown-amount" id="revenue-premium-fees">0.0 NCH</span>
+                        </div>
+                        <div class="revenue-breakdown-bar">
+                            <div class="revenue-breakdown-fill" id="revenue-premium-bar" style="width: 0%"></div>
+                        </div>
+                    </div>
+                    <div class="revenue-breakdown-item">
+                        <div class="revenue-breakdown-header">
+                            <span>Verification Fees</span>
+                            <span class="revenue-breakdown-amount" id="revenue-verification-fees">0.0 NCH</span>
+                        </div>
+                        <div class="revenue-breakdown-bar">
+                            <div class="revenue-breakdown-fill" id="revenue-verification-bar" style="width: 0%"></div>
+                        </div>
+                    </div>
+                    <div class="revenue-breakdown-item">
+                        <div class="revenue-breakdown-header">
+                            <span>Buyer Registration Fees</span>
+                            <span class="revenue-breakdown-amount" id="revenue-buyer-registration-fees">0.0 NCH</span>
+                        </div>
+                        <div class="revenue-breakdown-bar">
+                            <div class="revenue-breakdown-fill" id="revenue-buyer-registration-bar" style="width: 0%"></div>
+                        </div>
+                    </div>
+                    <div class="revenue-breakdown-item">
+                        <div class="revenue-breakdown-header">
+                            <span>Buyer Premium Fees</span>
+                            <span class="revenue-breakdown-amount" id="revenue-buyer-premium-fees">0.0 NCH</span>
+                        </div>
+                        <div class="revenue-breakdown-bar">
+                            <div class="revenue-breakdown-fill" id="revenue-buyer-premium-bar" style="width: 0%"></div>
+                        </div>
+                    </div>
+                    <div class="revenue-breakdown-item">
+                        <div class="revenue-breakdown-header">
+                            <span>Matching Fees</span>
+                            <span class="revenue-breakdown-amount" id="revenue-matching-fees">0.0 NCH</span>
+                        </div>
+                        <div class="revenue-breakdown-bar">
+                            <div class="revenue-breakdown-fill" id="revenue-matching-bar" style="width: 0%"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="recent-transactions">
+                    <h4>Recent Blockchain Transactions</h4>
+                    <div id="recent-transactions-list" class="transactions-list">
+                        <div class="no-transactions">No transactions yet</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="admin.js"></script>
+</body>
+</html>

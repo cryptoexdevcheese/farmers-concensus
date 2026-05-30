@@ -1,0 +1,754 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#0b110e">
+  <title>FARMERS CONCENSUS — Unified Crop Registry & Demand Planner</title>
+  
+  <!-- Premium Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <!-- CSS Stylesheet -->
+  <link rel="stylesheet" href="style.css">
+  
+  <!-- Chart.js for High-End Visualizations -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  
+  <!-- Lucide Icons via CDN -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  
+  <!-- Mobile Web App Manifest -->
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icon-192.svg">
+  <link rel="icon" type="image/svg+xml" sizes="192x192" href="icon-192.svg">
+  <link rel="icon" type="image/svg+xml" sizes="512x512" href="icon-512.svg">
+</head>
+<body>
+  
+  <!-- Main Glassmorphic Wrapper -->
+  <div class="app-container">
+    
+    <!-- Premium Header -->
+    <header class="app-header">
+      <div class="header-logo">
+        <div class="logo-icon">
+          <i data-lucide="sprout"></i>
+        </div>
+        <div class="logo-text">
+          <h1>FARMERS CONCENSUS</h1>
+          <p>Philippines</p>
+        </div>
+      </div>
+      
+      <div class="header-actions">
+        <div class="system-badge">
+          <span class="pulse-indicator"></span>
+          <span>Live Unified Database</span>
+        </div>
+        <div class="blockchain-badge" id="blockchain-status">
+          <span class="blockchain-indicator" id="blockchain-indicator"></span>
+          <span id="blockchain-status-text">Connecting...</span>
+        </div>
+        <button id="theme-toggle" class="icon-btn" title="Toggle Light/Dark Mode">
+          <i data-lucide="sun"></i>
+        </button>
+      </div>
+    </header>
+
+    <!-- Platform Hero Panel -->
+    <section class="platform-hero">
+      <div class="hero-content">
+        <h2>Bridging Farmers & Governance for Market Stability</h2>
+        <p>
+          Register your planned crop varieties and land area. By mapping our combined planting forecasts, the government helps prevent crop oversupply, stabilizes retail prices, and ensures a prosperous harvest for every Filipino farmer.
+        </p>
+      </div>
+      <div class="hero-stats-bar">
+        <div class="mini-stat">
+          <span class="value" id="hero-stat-farmers">0</span>
+          <span class="label">Registered Farmers</span>
+        </div>
+        <div class="mini-stat">
+          <span class="value" id="hero-stat-area">0.0 ha</span>
+          <span class="label">Total Hectares</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Tab Navigation Menu -->
+    <nav class="tab-navigation">
+      <button class="tab-btn active" data-tab="register-tab">
+        <i data-lucide="clipboard-signature"></i>
+        <span>Farmer Registration Portal</span>
+      </button>
+      <button class="tab-btn" data-tab="buyer-tab">
+        <i data-lucide="shopping-cart"></i>
+        <span>Buyer Registration</span>
+      </button>
+      <button class="tab-btn" data-tab="analytics-tab">
+        <i data-lucide="bar-chart-3"></i>
+        <span>Consensus Dashboard</span>
+      </button>
+    </nav>
+
+    <!-- Main View Content -->
+    <main class="app-content">
+      
+      <!-- TAB 1: FARMER REGISTRATION PORTAL -->
+      <section id="register-tab" class="tab-panel active">
+        <div class="portal-grid">
+          
+          <!-- Registration Form Container -->
+          <div class="form-card card animate-fade-in">
+            <div class="card-header">
+              <div class="card-title-icon green">
+                <i data-lucide="user-plus"></i>
+              </div>
+              <div>
+                <h3>Planting Intention Registry</h3>
+                <p>Submit your crops to secure supply transparency</p>
+              </div>
+            </div>
+            
+            <form id="consensus-form" novalidate>
+              
+              <!-- Section 1: Farmer Identity -->
+              <div class="form-section">
+                <h4 class="section-title"><span class="step-num">1</span>Personal & Contact Information</h4>
+                <div class="form-row flex-row">
+                  <div class="form-group flex-2">
+                    <label for="farmer-name">Full Name <span class="required">*</span></label>
+                    <div class="input-wrapper">
+                      <i data-lucide="user" class="input-icon"></i>
+                      <input type="text" id="farmer-name" placeholder="Juan Dela Cruz" required>
+                    </div>
+                    <span class="error-msg" id="name-error">Please enter your name</span>
+                  </div>
+                  <div class="form-group flex-1">
+                    <label for="farmer-contact">Mobile Number <span class="required">*</span></label>
+                    <div class="input-wrapper">
+                      <i data-lucide="phone" class="input-icon"></i>
+                      <input type="tel" id="farmer-contact" placeholder="09xxxxxxxxx" required pattern="^09\d{9}$">
+                    </div>
+                    <span class="error-msg" id="contact-error">Enter a valid 11-digit mobile number</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Section 2: Farm Location -->
+              <div class="form-section">
+                <h4 class="section-title"><span class="step-num">2</span>Farm Location (Geographical Site)</h4>
+                <div class="form-row triple-row">
+                  <div class="form-group">
+                    <label for="select-province">Province <span class="required">*</span></label>
+                    <select id="select-province" required>
+                      <option value="">-- Choose Province --</option>
+                    </select>
+                    <span class="error-msg" id="province-error">Please select a province</span>
+                  </div>
+                  <div class="form-group">
+                    <label for="select-municipality">City / Municipality <span class="required">*</span></label>
+                    <select id="select-municipality" required disabled>
+                      <option value="">-- Select Municipality --</option>
+                    </select>
+                    <span class="error-msg" id="municipality-error">Please select a municipality</span>
+                  </div>
+                  <div class="form-group">
+                    <label for="select-barangay">Barangay <span class="required">*</span></label>
+                    <select id="select-barangay" required disabled>
+                      <option value="">-- Select Barangay --</option>
+                    </select>
+                    <span class="error-msg" id="barangay-error">Please select a barangay</span>
+                  </div>
+                </div>
+                <!-- Custom Barangay Text Fallback (slide down dynamic input) -->
+                <div class="form-row hidden animate-fade-in" id="custom-barangay-row" style="margin-top: 16px;">
+                  <div class="form-group">
+                    <label for="custom-barangay">Specify Barangay Name <span class="required">*</span></label>
+                    <div class="input-wrapper">
+                      <i data-lucide="map-pin" class="input-icon"></i>
+                      <input type="text" id="custom-barangay" placeholder="e.g. Barangay San Sebastian">
+                    </div>
+                    <span class="error-msg" id="custom-barangay-error">Please enter the custom Barangay name</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Section 3: Vegetable Selector (Floating Grid) -->
+              <div class="form-section">
+                <h4 class="section-title">
+                  <span class="step-num">3</span>Vegetable Crop Variety <span class="required">*</span>
+                </h4>
+                <p class="section-subtitle">Click and select the vegetable you intend to plant:</p>
+                
+                <!-- Floating Vegetable Cards Grid -->
+                <div class="vegetable-chips-grid" id="vegetables-grid">
+                  <!-- JS dynamically injects cards here -->
+                </div>
+                <input type="hidden" id="selected-vegetable-id" required>
+                
+                <!-- Custom Vegetable Name Input (shown when "Other Vegetables" is selected) -->
+                <div id="custom-vegetable-row" class="form-group hidden">
+                  <label for="custom-vegetable-name">Please specify the vegetable name <span class="required">*</span></label>
+                  <input type="text" id="custom-vegetable-name" placeholder="Enter the name of your vegetable" class="form-input">
+                  <span class="error-msg" id="custom-vegetable-error">Please enter the vegetable name</span>
+                </div>
+                
+                <span class="error-msg centered-error" id="vegetable-error">Please choose a vegetable to plant</span>
+              </div>
+
+              <!-- Section 4: Crop Dimensions -->
+              <div class="form-section">
+                <h4 class="section-title"><span class="step-num">4</span>Cultivated Land Area & Timing</h4>
+                <div class="form-row flex-row">
+                  <div class="form-group flex-2">
+                    <label for="land-area">Size of Plantation <span class="required">*</span></label>
+                    <div class="input-group-united">
+                      <div class="input-wrapper">
+                        <i data-lucide="maximize" class="input-icon"></i>
+                        <input type="number" id="land-area" placeholder="e.g. 2.5" min="0.001" step="any" required>
+                      </div>
+                      <select id="area-unit">
+                        <option value="ha">Hectares (ha)</option>
+                        <option value="sqm">Square Meters (sqm)</option>
+                      </select>
+                    </div>
+                    <span class="error-msg" id="area-error">Enter a positive land area</span>
+                  </div>
+                  <div class="form-group flex-1">
+                    <label for="planting-date">Planting Date <span class="required">*</span></label>
+                    <div class="input-wrapper">
+                      <i data-lucide="calendar" class="input-icon"></i>
+                      <input type="date" id="planting-date" required>
+                    </div>
+                    <span class="error-msg" id="date-error">Select a valid planting date</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Dynamic Interactive Calculator (Estimator) -->
+              <div class="calculator-panel" id="calculator-panel">
+                <div class="calc-header">
+                  <i data-lucide="calculator"></i>
+                  <span>Live Agricultural Estimate Engine</span>
+                </div>
+                <div class="calc-body">
+                  <div class="calc-placeholder" id="calc-placeholder">
+                    Select a vegetable and input land area to see real-time yield estimates.
+                  </div>
+                  <div class="calc-details hidden" id="calc-details">
+                    <div class="calc-metric">
+                      <span class="label">Equivalent Area:</span>
+                      <span class="value" id="calc-ha-val">0.00 ha</span>
+                    </div>
+                    <div class="calc-divider"></div>
+                    <div class="calc-metric">
+                      <span class="label">Estimated Harvest:</span>
+                      <span class="value highlight" id="calc-yield-val">0.00 Tons</span>
+                    </div>
+                    <div class="calc-divider"></div>
+                    <div class="calc-metric">
+                      <span class="label">Expected Harvest Period:</span>
+                      <span class="value" id="calc-harvest-val">--</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Form Submit -->
+              <div class="form-footer">
+                <button type="submit" class="submit-btn" id="submit-btn">
+                  <i data-lucide="send"></i>
+                  <span>Submit to Crop Consensus</span>
+                </button>
+              </div>
+
+            </form>
+          </div>
+          
+          <!-- Informational Right Sidebar -->
+          <div class="sidebar-info animate-fade-in delay-100">
+            <!-- Crop Diversity Warning Alert Box -->
+            <div class="widget alert-widget info-card-gradient">
+              <h4>
+                <i data-lucide="bell" class="pulse-icon"></i>
+                Agricultural Advisory Alert
+              </h4>
+              <p>
+                <strong>Current Market Supply:</strong> Cabbage is experiencing high planned planting volumes in Benguet for June 2026. Farmers are advised to consider diversifying into carrots or potatoes to avoid market glut and stabilize prices.
+              </p>
+              <div class="btn-group-widget">
+                <button class="widget-action-btn" onclick="app.showDashboardDetails()">
+                  View Supply Charts <i data-lucide="arrow-right"></i>
+                </button>
+              </div>
+            </div>
+
+            <!-- Yield Benchmark Standards Info Box -->
+            <div class="widget stats-widget">
+              <h3>DA Standard Yield Benchmarks</h3>
+              <div class="benchmark-list">
+                <div class="benchmark-item">
+                  <img src="https://upload.wikimedia.org/wikipedia/commons/e/e0/Chou_pomm%C3%A9_02.jpg" alt="Cabbage" class="benchmark-img" onerror="this.style.display='none'">
+                  <span class="name">Cabbage</span>
+                  <span class="yield">20.5 Tons / Ha</span>
+                </div>
+                <div class="benchmark-item">
+                  <img src="https://upload.wikimedia.org/wikipedia/commons/2/28/Onions.jpg" alt="Onion" class="benchmark-img" onerror="this.style.display='none'">
+                  <span class="name">Onion (Sibuyas)</span>
+                  <span class="yield">16.5 Tons / Ha</span>
+                </div>
+                <div class="benchmark-item">
+                  <img src="https://upload.wikimedia.org/wikipedia/commons/8/88/Salad_garden_tomato.jpg" alt="Tomato" class="benchmark-img" onerror="this.style.display='none'">
+                  <span class="name">Tomato</span>
+                  <span class="yield">25.0 Tons / Ha</span>
+                </div>
+                <div class="benchmark-item">
+                  <img src="https://upload.wikimedia.org/wikipedia/commons/7/78/Aubergine.jpg" alt="Eggplant" class="benchmark-img" onerror="this.style.display='none'">
+                  <span class="name">Eggplant (Talong)</span>
+                  <span class="yield">15.0 Tons / Ha</span>
+                </div>
+              </div>
+              <p class="footnote">* Based on regional statistics for high-yielding agricultural farms in Luzon & Mindanao.</p>
+            </div>
+            
+            <!-- Quick FAQ Box -->
+            <div class="widget faq-widget">
+              <h3>Frequently Asked Questions</h3>
+              <div class="faq-item">
+                <h5 class="faq-q">Why should I register?</h5>
+                <p class="faq-a">Your registered data allows government agencies to forecast production totals, letting planners warn you of potential market oversupplies early, giving you time to rotate crops.</p>
+              </div>
+              <div class="faq-item">
+                <h5 class="faq-q">Is my personal data safe?</h5>
+                <p class="faq-a">Yes. Your contact information is kept highly secure and strictly used by the Department of Agriculture for agricultural programs and support.</p>
+              </div>
+            </div>
+          </div>
+          
+        </div>
+      </section>
+
+      <!-- TAB 2: BUYER REGISTRATION PORTAL -->
+      <section id="buyer-tab" class="tab-panel">
+        
+        <!-- Buyer Registration Hero -->
+        <div class="registration-hero">
+          <div class="hero-content">
+            <h2>🛒 Buyer Registration Portal</h2>
+            <p>Register as a buyer to connect with Filipino farmers and access fresh produce directly from the source. Support local agriculture while ensuring quality and transparency in your supply chain.</p>
+            <div class="benefits-grid">
+              <div class="benefit-item">
+                <i data-lucide="link"></i>
+                <span>Direct Farmer Connections</span>
+              </div>
+              <div class="benefit-item">
+                <i data-lucide="shield-check"></i>
+                <span>Blockchain-Verified Transactions</span>
+              </div>
+              <div class="benefit-item">
+                <i data-lucide="trending-up"></i>
+                <span>Quality Assurance Tracking</span>
+              </div>
+              <div class="benefit-item">
+                <i data-lucide="clock"></i>
+                <span>Real-Time Inventory Updates</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Buyer Registration Form -->
+        <div class="form-section card animate-fade-in">
+          <div class="form-header">
+            <div class="form-title-icon">
+              <i data-lucide="user-plus"></i>
+            </div>
+            <div>
+              <h3>Buyer Registration Form</h3>
+              <p>Complete your buyer profile to connect with farmers</p>
+            </div>
+          </div>
+
+          <form id="buyer-registration-form" class="registration-form">
+            <!-- Personal Information -->
+            <div class="form-group">
+              <label>Full Name *</label>
+              <input type="text" id="buyer-name" placeholder="Enter your full name" required>
+            </div>
+
+            <div class="form-group">
+              <label>Company/Organization Name *</label>
+              <input type="text" id="company-name" placeholder="Enter company or organization name" required>
+            </div>
+
+            <div class="form-group">
+              <label>Email Address *</label>
+              <input type="email" id="buyer-email" placeholder="your@email.com" required>
+            </div>
+
+            <div class="form-group">
+              <label>Phone Number *</label>
+              <input type="tel" id="buyer-phone" placeholder="+63 9XX XXX XXXX" required>
+            </div>
+
+            <!-- Location Information -->
+            <div class="form-group">
+              <label>Province *</label>
+              <select id="buyer-province" required>
+                <option value="">Select Province</option>
+                <option value="Benguet">Benguet</option>
+                <option value="Pangasinan">Pangasinan</option>
+                <option value="Nueva Ecija">Nueva Ecija</option>
+                <option value="Ilocos Norte">Ilocos Norte</option>
+                <option value="Cagayan">Cagayan</option>
+                <option value="Isabela">Isabela</option>
+                <option value="Quezon">Quezon</option>
+                <option value="Bicol">Bicol</option>
+                <option value="Mindoro">Mindoro</option>
+                <option value="Palawan">Palawan</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label>Business Type *</label>
+              <select id="business-type" required>
+                <option value="">Select Business Type</option>
+                <option value="retailer">Retailer</option>
+                <option value="wholesaler">Wholesaler</option>
+                <option value="restaurant">Restaurant</option>
+                <option value="hotel">Hotel</option>
+                <option value="institution">Institution (School/Hospital)</option>
+                <option value="processor">Food Processor</option>
+                <option value="exporter">Exporter</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+
+            <!-- Product Preferences -->
+            <div class="form-group">
+              <label>Interested Products *</label>
+              <div class="checkbox-group" id="buyer-products">
+                <label class="checkbox-item">
+                  <input type="checkbox" value="leafy_greens"> Leafy Greens
+                </label>
+                <label class="checkbox-item">
+                  <input type="checkbox" value="cruciferous"> Cruciferous Vegetables
+                </label>
+                <label class="checkbox-item">
+                  <input type="checkbox" value="root_vegetables"> Root Vegetables
+                </label>
+                <label class="checkbox-item">
+                  <input type="checkbox" value="fruits"> Fruits
+                </label>
+                <label class="checkbox-item">
+                  <input type="checkbox" value="herbs"> Herbs
+                </label>
+                <label class="checkbox-item">
+                  <input type="checkbox" value="all"> All Categories
+                </label>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label>Estimated Monthly Volume (tons) *</label>
+              <input type="number" id="monthly-volume" placeholder="Enter estimated monthly volume" min="0.5" step="0.5" required>
+            </div>
+
+            <!-- Premium Tier Option -->
+            <div class="form-group premium-option">
+              <label class="premium-checkbox">
+                <input type="checkbox" id="buyer-premium">
+                <span>
+                  <strong>🌟 Premium Buyer Membership</strong>
+                  <p>Get priority matching, advanced analytics, and direct farmer access (3.0 NCH additional fee)</p>
+                </span>
+              </label>
+            </div>
+
+            <button type="submit" class="btn-primary">
+              <i data-lucide="shopping-cart"></i>
+              <span>Register as Buyer</span>
+            </button>
+          </form>
+        </div>
+
+        <!-- Buyer Information Section -->
+        <div class="info-section card animate-fade-in">
+          <h3>📋 Buyer Benefits</h3>
+          <div class="benefits-list">
+            <div class="benefit-row">
+              <div class="benefit-icon">
+                <i data-lucide="check-circle"></i>
+              </div>
+              <div class="benefit-text">
+                <h4>Direct Sourcing</h4>
+                <p>Connect directly with farmers, eliminating middlemen and reducing costs.</p>
+              </div>
+            </div>
+            <div class="benefit-row">
+              <div class="benefit-icon">
+                <i data-lucide="check-circle"></i>
+              </div>
+              <div class="benefit-text">
+                <h4>Quality Assurance</h4>
+                <p>Blockchain-verified transactions ensure product quality and authenticity.</p>
+              </div>
+            </div>
+            <div class="benefit-row">
+              <div class="benefit-icon">
+                <i data-lucide="check-circle"></i>
+              </div>
+              <div class="benefit-text">
+                <h4>Real-Time Inventory</h4>
+                <p>Access real-time crop availability and harvest forecasts.</p>
+              </div>
+            </div>
+            <div class="benefit-row">
+              <div class="benefit-icon">
+                <i data-lucide="check-circle"></i>
+              </div>
+              <div class="benefit-text">
+                <h4>Fair Pricing</h4>
+                <p>Transparent pricing helps ensure fair compensation for farmers.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 3: PUBLIC CONSENSUS DASHBOARD -->
+      <section id="analytics-tab" class="tab-panel">
+        
+        <!-- Big Analytics Metrics Cards -->
+        <div class="metrics-grid">
+          <div class="metric-card card animate-scale-up">
+            <div class="metric-icon green">
+              <i data-lucide="users"></i>
+            </div>
+            <div class="metric-info">
+              <span class="metric-value" id="metric-farmers">0</span>
+              <span class="metric-label">Registered Farmers</span>
+            </div>
+          </div>
+          <div class="metric-card card animate-scale-up delay-100">
+            <div class="metric-icon yellow">
+              <i data-lucide="expand"></i>
+            </div>
+            <div class="metric-info">
+              <span class="metric-value" id="metric-area">0.0 ha</span>
+              <span class="metric-label">Cultivated Land Area</span>
+            </div>
+          </div>
+          <div class="metric-card card animate-scale-up delay-200">
+            <div class="metric-icon orange">
+              <i data-lucide="wheat"></i>
+            </div>
+            <div class="metric-info">
+              <span class="metric-value" id="metric-yield">0.0 Tons</span>
+              <span class="metric-label">Est. National Yield</span>
+            </div>
+          </div>
+          <div class="metric-card card animate-scale-up delay-300">
+            <div class="metric-icon blue">
+              <i data-lucide="map-pin"></i>
+            </div>
+            <div class="metric-info">
+              <span class="metric-value" id="metric-provinces">0</span>
+              <span class="metric-label">Active Provinces</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- High-End Graphs and Interactive Analytics -->
+        <div class="dashboard-charts-row">
+          
+          <!-- Crop Distribution Doughnut Card -->
+          <div class="chart-card card animate-fade-in">
+            <div class="card-header">
+              <div class="card-title-icon orange">
+                <i data-lucide="pie-chart"></i>
+              </div>
+              <div>
+                <h3>Crop Share Profile</h3>
+                <p>Allocation of total land area per vegetable type</p>
+              </div>
+              <select id="crop-share-province-filter" class="province-filter">
+                <option value="all">All Provinces</option>
+              </select>
+            </div>
+            <div class="chart-body">
+              <div class="chart-container">
+                <canvas id="cropShareChart"></canvas>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Province Cultivated Area Bar Chart Card -->
+          <div class="chart-card card animate-fade-in delay-100">
+            <div class="card-header">
+              <div class="card-title-icon green">
+                <i data-lucide="bar-chart-horizontal"></i>
+              </div>
+              <div>
+                <h3>Agricultural Intensity</h3>
+                <p>Cultivated land area (hectares) per Province</p>
+              </div>
+            </div>
+            <div class="chart-body">
+              <div class="chart-container">
+                <canvas id="provinceIntensityChart"></canvas>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Timeline Harvest Graph Card -->
+        <div class="chart-card card full-width animate-fade-in delay-200">
+          <div class="card-header">
+            <div class="card-title-icon blue">
+              <i data-lucide="calendar-range"></i>
+            </div>
+            <div>
+              <h3>Supply Timeline Planner</h3>
+              <p>Forecasted monthly vegetable harvesting volumes (Tons)</p>
+            </div>
+            <select id="timeline-province-filter" class="province-filter">
+              <option value="all">All Provinces</option>
+            </select>
+          </div>
+          <div class="chart-body wide-chart">
+            <div class="chart-container">
+              <canvas id="timelineChart"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <!-- Ledger Table Section -->
+        <div class="ledger-card card animate-fade-in delay-300">
+          <div class="card-header flex-header">
+            <div class="header-left">
+              <div class="card-title-icon gray">
+                <i data-lucide="database"></i>
+              </div>
+              <div>
+                <h3>Unified Crop Register</h3>
+                <p>Verifiable live reports submitted by local farmers</p>
+              </div>
+            </div>
+            
+            <!-- Filters Toolbar -->
+            <div class="ledger-toolbar">
+              <div class="search-box">
+                <i data-lucide="search"></i>
+                <input type="text" id="table-search" placeholder="Search by farmer name...">
+              </div>
+              <select id="table-filter-province">
+                <option value="">All Provinces</option>
+              </select>
+              <select id="table-filter-vegetable">
+                <option value="">All Vegetables</option>
+              </select>
+            </div>
+          </div>
+          
+          <div class="table-scroll-container">
+            <table class="ledger-table" id="ledger-table">
+              <thead>
+                <tr>
+                  <th>Registry ID</th>
+                  <th>Farmer Details</th>
+                  <th>Location (Barangay, City, Province)</th>
+                  <th>Crop variety</th>
+                  <th>Land Area</th>
+                  <th>Est. Harvest</th>
+                  <th>Target Harvest Date</th>
+                </tr>
+              </thead>
+              <tbody id="ledger-tbody">
+                <!-- Javascript will render rows here -->
+              </tbody>
+            </table>
+          </div>
+          
+          <div class="table-footer-status">
+            <span>Showing <span id="ledger-count-visible">0</span> of <span id="ledger-count-total">0</span> records</span>
+            <button class="export-btn" id="export-csv-btn">
+              <i data-lucide="download"></i>
+              <span>Export CSV Data</span>
+            </button>
+          </div>
+
+        </div>
+
+      </section>
+
+    </main>
+
+    <!-- Platform Footer -->
+    <footer class="app-footer">
+      <p>Farmers Consensus Portal &copy; 2026. Powered by <strong>Cheese Blockchain</strong> &mdash; Secure, Transparent, and Decentralized Agricultural Data.</p>
+      <p class="sub-footer">Designed for Philippine Farmers. Empowering food security through data transparency. <a href="/admin.html" style="color: var(--color-primary); opacity: 0.5; text-decoration: none;">Admin</a></p>
+    </footer>
+
+  </div>
+
+  <!-- Registration Success Modal Alert -->
+  <div class="modal-overlay hidden" id="success-modal">
+    <div class="modal-card animate-scale-up">
+      <div class="modal-success-circle">
+        <i data-lucide="check-circle-2"></i>
+      </div>
+      <h2>Registration Successful!</h2>
+      <p>Your planting intention has been successfully recorded in the national Farmers Consensus database.</p>
+      
+      <div class="receipt-box">
+        <div class="receipt-row">
+          <span>Registration ID:</span>
+          <strong id="receipt-id">FC-2026-0000</strong>
+        </div>
+        <div class="receipt-row">
+          <span>Farmer:</span>
+          <span id="receipt-name">Juan Dela Cruz</span>
+        </div>
+        <div class="receipt-row">
+          <span>Location:</span>
+          <span id="receipt-location">La Trinidad, Benguet</span>
+        </div>
+        <div class="receipt-row">
+          <span>Crops Registered:</span>
+          <span><strong id="receipt-vegetable">Cabbage</strong></span>
+        </div>
+        <div class="receipt-row">
+          <span>Land Size:</span>
+          <span id="receipt-area">1.50 Hectares</span>
+        </div>
+        <div class="receipt-row">
+          <span>Estimated Output:</span>
+          <span class="highlight" id="receipt-yield">30.75 Tons</span>
+        </div>
+        
+        <!-- Blockchain Receipt Section -->
+        <div id="receipt-blockchain-info"></div>
+      </div>
+
+      <button class="modal-close-btn" id="close-modal-btn">
+        <span>Proceed to Analytics Dashboard</span>
+        <i data-lucide="arrow-right"></i>
+      </button>
+    </div>
+  </div>
+
+  <!-- Injecting dynamic JS files -->
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
