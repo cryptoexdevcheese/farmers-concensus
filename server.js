@@ -4,8 +4,6 @@ const cors = require('cors');
 const path = require('path');
 const axios = require('axios');
 const session = require('express-session');
-const RedisStore = require('connect-redis')(session);
-const redis = require('redis');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -33,37 +31,14 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname)));
 
-// Session Middleware with Redis support for Railway
-let sessionStore;
-if (process.env.REDIS_URL) {
-    // Use Redis for production (Railway provides Redis)
-    const redisClient = redis.createClient({
-        url: process.env.REDIS_URL
-    });
-    
-    redisClient.connect().catch(err => {
-        console.error('Redis connection error:', err);
-    });
-    
-    sessionStore = new RedisStore({
-        client: redisClient,
-        prefix: 'farmers-consensus:'
-    });
-} else {
-    // Fallback to MemoryStore for development
-    console.warn('⚠️ Using MemoryStore for sessions - not suitable for production');
-    sessionStore = new session.MemoryStore();
-}
-
+// Session Middleware
 app.use(session({
     secret: ADMIN_SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
-    store: sessionStore,
     cookie: { 
         secure: process.env.NODE_ENV === 'production', // HTTPS only in production
-        maxAge: 3600000, // 1 hour
-        sameSite: 'lax'
+        maxAge: 3600000 // 1 hour
     }
 }));
 
