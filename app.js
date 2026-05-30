@@ -58,10 +58,10 @@ const app = {
         this.registrations = JSON.parse(saved);
       } catch (e) {
         console.error("Failed to parse saved registrations, resetting.", e);
-        this.registrations = [...MOCK_REGISTRATIONS];
+        this.registrations = [];
       }
     } else {
-      this.registrations = [...MOCK_REGISTRATIONS];
+      this.registrations = [];
       localStorage.setItem("farmers_consensus_data", JSON.stringify(this.registrations));
     }
   },
