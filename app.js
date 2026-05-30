@@ -55,14 +55,22 @@ const app = {
     const saved = localStorage.getItem("farmers_consensus_data");
     if (saved) {
       try {
-        this.registrations = JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        // Check if saved data is the old mock data by checking for specific mock IDs
+        if (parsed.some(reg => reg.id && reg.id.startsWith('FC-2026-000'))) {
+          console.log("Detected old mock data, clearing...");
+          localStorage.removeItem("farmers_consensus_data");
+          this.registrations = [];
+        } else {
+          this.registrations = parsed;
+        }
       } catch (e) {
         console.error("Failed to parse saved registrations, resetting.", e);
+        localStorage.removeItem("farmers_consensus_data");
         this.registrations = [];
       }
     } else {
       this.registrations = [];
-      localStorage.setItem("farmers_consensus_data", JSON.stringify(this.registrations));
     }
   },
 
