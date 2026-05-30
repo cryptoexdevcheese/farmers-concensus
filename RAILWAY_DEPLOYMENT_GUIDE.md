@@ -30,6 +30,8 @@
 1. Once project is created, click on **"Variables"** tab
 2. Add the following environment variables:
 
+**Note:** Redis is not required for initial deployment. MemoryStore is used for sessions (suitable for single-instance deployment).
+
 ```
 # Cheese Blockchain Configuration
 CHEESE_BLOCKCHAIN_API_URL=http://165.22.252.113:8080
