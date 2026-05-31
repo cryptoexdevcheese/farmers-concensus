@@ -175,8 +175,14 @@ const app = {
     const customRow = document.getElementById("custom-barangay-row");
     const customInput = document.getElementById("custom-barangay");
 
+    // Check if PHILIPPINES_GEOGRAPHY is available
+    if (!window.PHILIPPINES_GEOGRAPHY) {
+      console.error('PHILIPPINES_GEOGRAPHY not found. Make sure data.js is loaded before app.js');
+      return;
+    }
+
     // Populate Provinces
-    Object.keys(PHILIPPINES_GEOGRAPHY).sort().forEach(province => {
+    Object.keys(window.PHILIPPINES_GEOGRAPHY).sort().forEach(province => {
       const option = document.createElement("option");
       option.value = province;
       option.textContent = province;
@@ -203,7 +209,7 @@ const app = {
       provinceSelect.parentElement.classList.remove("invalid");
 
       if (selectedProvince) {
-        const municipalities = Object.keys(PHILIPPINES_GEOGRAPHY[selectedProvince]).sort();
+        const municipalities = Object.keys(window.PHILIPPINES_GEOGRAPHY[selectedProvince]).sort();
         municipalities.forEach(mun => {
           const option = document.createElement("option");
           option.value = mun;
@@ -234,7 +240,7 @@ const app = {
       municipalitySelect.parentElement.classList.remove("invalid");
 
       if (selectedMun) {
-        const barangays = PHILIPPINES_GEOGRAPHY[selectedProvince][selectedMun].sort();
+        const barangays = window.PHILIPPINES_GEOGRAPHY[selectedProvince][selectedMun].sort();
         barangays.forEach(brgy => {
           const option = document.createElement("option");
           option.value = brgy;
@@ -276,7 +282,7 @@ const app = {
     const grid = document.getElementById("vegetables-grid");
     grid.innerHTML = "";
 
-    VEGETABLES.forEach(veg => {
+    window.VEGETABLES.forEach(veg => {
       const chip = document.createElement("div");
       chip.className = "veg-chip";
       chip.setAttribute("data-veg-id", veg.id);
@@ -370,7 +376,7 @@ const app = {
     }
 
     // Math Engine
-    const vegetable = VEGETABLES.find(v => v.id === this.selectedVegetableId);
+    const vegetable = window.VEGETABLES.find(v => v.id === this.selectedVegetableId);
     let areaHa = landAreaVal;
     if (unit === "sqm") {
       areaHa = landAreaVal / 10000;
@@ -508,7 +514,7 @@ const app = {
       }
 
       // Form is fully validated: Proceed to record registry!
-      const vegetable = VEGETABLES.find(v => v.id === this.selectedVegetableId);
+      const vegetable = window.VEGETABLES.find(v => v.id === this.selectedVegetableId);
       const unit = document.getElementById("area-unit").value;
       const areaValNum = parseFloat(landAreaInput.value);
       
@@ -809,7 +815,7 @@ const app = {
   // Dynamic calculations for Crop Share doughnut
   getCropShareData(provinceFilter = "all") {
     const cropAreas = {};
-    VEGETABLES.forEach(v => cropAreas[v.id] = 0);
+    window.VEGETABLES.forEach(v => cropAreas[v.id] = 0);
 
     const filteredRegistrations = provinceFilter === "all" 
       ? this.registrations 
@@ -825,7 +831,7 @@ const app = {
     const data = [];
     const colors = [];
 
-    VEGETABLES.forEach(v => {
+    window.VEGETABLES.forEach(v => {
       if (cropAreas[v.id] > 0) {
         labels.push(`${v.emoji} ${v.name}`);
         data.push(cropAreas[v.id]);
@@ -956,7 +962,7 @@ const app = {
     const uniqueVegIds = new Set();
     this.registrations.forEach(r => uniqueVegIds.add(r.vegetableId));
     Array.from(uniqueVegIds).sort().forEach(id => {
-      const veg = VEGETABLES.find(v => v.id === id);
+      const veg = window.VEGETABLES.find(v => v.id === id);
       if (veg) {
         const option = document.createElement("option");
         option.value = id;
@@ -1019,7 +1025,7 @@ const app = {
 
     // Append Rows
     filtered.forEach(r => {
-      const veg = VEGETABLES.find(v => v.id === r.vegetableId) || { name: "Unknown", emoji: "🌱", tag: "Gulay", color: "#10b981", maturationDays: 60 };
+      const veg = window.VEGETABLES.find(v => v.id === r.vegetableId) || { name: "Unknown", emoji: "🌱", tag: "Gulay", color: "#10b981", maturationDays: 60 };
       const displayVegetableName = r.vegetableName || veg.name;
       const row = document.createElement("tr");
 
@@ -1071,7 +1077,7 @@ const app = {
       const headers = ["Registry ID", "Farmer Name", "Contact Number", "Province", "Municipality", "Barangay", "Crop Variety ID", "Crop Name", "Land Area (Ha)", "Land Area (Sqm)", "Est Yield (Tons)", "Planting Date", "Est Harvest Date"];
       
       const rows = this.registrations.map(r => {
-        const veg = VEGETABLES.find(v => v.id === r.vegetableId) || { name: "Unknown" };
+        const veg = window.VEGETABLES.find(v => v.id === r.vegetableId) || { name: "Unknown" };
         return [
           r.id,
           `"${r.farmerName.replace(/"/g, '""')}"`,
@@ -1866,6 +1872,9 @@ const app = {
         this.updateAuthUI(true);
         this.loadUserProfile();
         
+        // Close registration modal
+        this.closeModal('register-modal');
+        
         // Show success message
         this.showNotification('Registration successful! Welcome to Farmers Consensus.', 'success');
         
@@ -1916,6 +1925,9 @@ const app = {
         // Update UI
         this.updateAuthUI(true);
         this.loadUserProfile();
+        
+        // Close login modal
+        this.closeModal('login-modal');
         
         // Show success message
         this.showNotification('Login successful! Welcome back.', 'success');

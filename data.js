@@ -195,3 +195,8 @@ const VEGETABLES = [
 
 // No mock registrations - platform starts with zero farmers
 const MOCK_REGISTRATIONS = [];
+
+// Make data globally available
+window.PHILIPPINES_GEOGRAPHY = PHILIPPINES_GEOGRAPHY;
+window.VEGETABLES = VEGETABLES;
+window.MOCK_REGISTRATIONS = MOCK_REGISTRATIONS;
