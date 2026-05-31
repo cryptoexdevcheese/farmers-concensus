@@ -178,8 +178,24 @@ const app = {
     // Check if PHILIPPINES_GEOGRAPHY is available
     if (!window.PHILIPPINES_GEOGRAPHY) {
       console.error('PHILIPPINES_GEOGRAPHY not found. Make sure data.js is loaded before app.js');
-      return;
+      // Fallback to basic data if not available
+      window.PHILIPPINES_GEOGRAPHY = {
+        "Benguet": {
+          "La Trinidad": ["Pico", "Balili", "Puguis", "Wangal", "Alapang", "Bahong", "Ambiong", "Shilan", "Lubas", "Beckel", "Betag"],
+          "Baguio City": ["Magsaysay", "City Camp", "Engineers Hill", "Hillside", "Holy Ghost", "San Carlos", "Jose Abad Santos"]
+        },
+        "Nueva Ecija": {
+          "Cabanatuan City": ["Valenzuela", "Magsaysay District", "Mabini Extension"],
+          "Gapan City": ["Bungo", "Mahipon", "Pambuan", "San Roque", "Santo Cristo"]
+        },
+        "Pangasinan": {
+          "Dagupan City": ["Bonuan Boquig", "Bonuan Gueset", "Carael", "Caranglaan", "Malued", "Mayombo"],
+          "Urdaneta City": ["Anonas", "Bactad East", "Nancalobasaan", "Pinmaludpod", "San Jose"]
+        }
+      };
     }
+
+    console.log('Available provinces:', Object.keys(window.PHILIPPINES_GEOGRAPHY));
 
     // Populate Provinces
     Object.keys(window.PHILIPPINES_GEOGRAPHY).sort().forEach(province => {
@@ -282,6 +298,7 @@ const app = {
     const grid = document.getElementById("vegetables-grid");
     grid.innerHTML = "";
 
+    // Populate desktop grid
     window.VEGETABLES.forEach(veg => {
       const chip = document.createElement("div");
       chip.className = "veg-chip";
@@ -299,6 +316,23 @@ const app = {
 
       grid.appendChild(chip);
     });
+
+    // Populate mobile dropdown
+    const mobileSelect = document.getElementById("vegetable-select-mobile");
+    if (mobileSelect) {
+      mobileSelect.innerHTML = '<option value="">-- Choose a vegetable --</option>';
+      window.VEGETABLES.forEach(veg => {
+        const option = document.createElement("option");
+        option.value = veg.id;
+        option.textContent = `${veg.emoji} ${veg.name} (${veg.tag})`;
+        mobileSelect.appendChild(option);
+      });
+
+      // Add change handler for mobile dropdown
+      mobileSelect.addEventListener("change", (e) => {
+        this.selectVegetableChip(e.target.value);
+      });
+    }
   },
 
   // Select a Vegetable Chip
@@ -2258,7 +2292,10 @@ const app = {
     if (isLoggedIn) {
       // Show user menu, hide auth buttons
       authButtons.forEach(btn => btn.style.display = 'none');
-      userMenu.forEach(menu => menu.style.display = 'block');
+      userMenu.forEach(menu => {
+        menu.style.display = 'flex';
+        menu.classList.add('visible');
+      });
       loginRequiredElements.forEach(el => el.classList.remove('hidden'));
       
       // Update user display info
@@ -2270,8 +2307,11 @@ const app = {
       });
     } else {
       // Show auth buttons, hide user menu
-      authButtons.forEach(btn => btn.style.display = 'block');
-      userMenu.forEach(menu => menu.style.display = 'none');
+      authButtons.forEach(btn => btn.style.display = 'flex');
+      userMenu.forEach(menu => {
+        menu.style.display = 'none';
+        menu.classList.remove('visible');
+      });
       loginRequiredElements.forEach(el => el.classList.add('hidden'));
     }
   },

@@ -237,15 +237,29 @@
                 </div>
               </div>
 
-              <!-- Section 3: Vegetable Selector (Floating Grid) -->
+              <!-- Section 3: Vegetable Selector -->
               <div class="form-section">
                 <h4 class="section-title">
                   <span class="step-num">3</span>Vegetable Crop Variety <span class="required">*</span>
                 </h4>
-                <p class="section-subtitle">Click and select the vegetable you intend to plant:</p>
+                <p class="section-subtitle">Select the vegetable you intend to plant:</p>
                 
-                <!-- Floating Vegetable Cards Grid -->
-                <div class="vegetable-chips-grid" id="vegetables-grid">
+                <!-- Mobile Dropdown (visible only on mobile) -->
+                <div class="mobile-vegetable-select">
+                  <div class="form-group">
+                    <label for="vegetable-select-mobile">Select Vegetable</label>
+                    <div class="input-wrapper">
+                      <i data-lucide="leaf" class="input-icon"></i>
+                      <select id="vegetable-select-mobile">
+                        <option value="">-- Choose a vegetable --</option>
+                        <!-- JS dynamically populates this -->
+                      </select>
+                    </div>
+                  </div>
+                </div>
+                
+                <!-- Desktop Vegetable Cards Grid (hidden on mobile) -->
+                <div class="vegetable-chips-grid desktop-only" id="vegetables-grid">
                   <!-- JS dynamically injects cards here -->
                 </div>
                 <input type="hidden" id="selected-vegetable-id" required>
@@ -285,6 +299,39 @@
                       <input type="date" id="planting-date" required>
                     </div>
                     <span class="error-msg" id="date-error">Select a valid planting date</span>
+                  </div>
+                </div>
+                <div class="form-row flex-row">
+                  <div class="form-group flex-1">
+                    <label for="seedling-type">Seedling Type <span class="required">*</span></label>
+                    <div class="input-wrapper">
+                      <i data-lucide="sprout" class="input-icon"></i>
+                      <select id="seedling-type" required>
+                        <option value="">Select seedling type</option>
+                        <option value="direct_seeding">Direct Seeding</option>
+                        <option value="transplanted">Transplanted Seedlings</option>
+                        <option value="seedlings_4weeks">4-Week Old Seedlings</option>
+                        <option value="seedlings_6weeks">6-Week Old Seedlings</option>
+                        <option value="seedlings_8weeks">8-Week Old Seedlings</option>
+                        <option value="organic">Organic Seedlings</option>
+                        <option value="hybrid">Hybrid Varieties</option>
+                        <option value="native">Native Varieties</option>
+                      </select>
+                    </div>
+                    <span class="error-msg" id="seedling-error">Please select seedling type</span>
+                  </div>
+                  <div class="form-group flex-1">
+                    <label for="farming-method">Farming Method</label>
+                    <div class="input-wrapper">
+                      <i data-lucide="tractor" class="input-icon"></i>
+                      <select id="farming-method">
+                        <option value="conventional">Conventional</option>
+                        <option value="organic">Organic</option>
+                        <option value="sustainable">Sustainable</option>
+                        <option value="hydroponic">Hydroponic</option>
+                        <option value="mixed">Mixed Farming</option>
+                      </select>
+                    </div>
                   </div>
                 </div>
               </div>

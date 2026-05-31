@@ -200,3 +200,7 @@ const MOCK_REGISTRATIONS = [];
 window.PHILIPPINES_GEOGRAPHY = PHILIPPINES_GEOGRAPHY;
 window.VEGETABLES = VEGETABLES;
 window.MOCK_REGISTRATIONS = MOCK_REGISTRATIONS;
+
+// Debug: Log data availability
+console.log('PHILIPPINES_GEOGRAPHY loaded:', Object.keys(PHILIPPINES_GEOGRAPHY).length, 'provinces');
+console.log('VEGETABLES loaded:', VEGETABLES.length, 'vegetables');

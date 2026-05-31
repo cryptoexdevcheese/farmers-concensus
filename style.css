@@ -646,6 +646,20 @@ select:disabled {
   padding: 4px;
 }
 
+.mobile-vegetable-select {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .vegetable-chips-grid {
+    display: none;
+  }
+  
+  .mobile-vegetable-select {
+    display: block;
+  }
+}
+
 .veg-chip {
   background-color: var(--color-bg-input);
   border: 1px solid var(--color-border);
@@ -2123,44 +2137,41 @@ textarea {
   transform: scale(0.98);
 }
 
-/* Mobile Bottom Navigation (Alternative) */
+/* Mobile Top Navigation */
 @media (max-width: 768px) {
   .tab-navigation {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    top: auto;
-    background: rgba(11, 17, 14, 0.95);
-    border-top: 1px solid var(--color-border);
-    border-bottom: none;
-    padding: 8px 0;
-    padding-bottom: max(8px, env(safe-area-inset-bottom));
-    z-index: 1000;
-    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.3);
+    position: static;
+    background: var(--color-bg-card);
+    border-bottom: 1px solid var(--color-border);
+    border-top: none;
+    padding: 12px 8px;
+    order: -1; /* Move navigation to top */
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 16px;
   }
   
   .tab-btn {
     flex: 1;
-    flex-direction: column;
-    padding: 8px;
-    gap: 4px;
-    font-size: 0.75rem;
+    min-width: calc(50% - 4px);
+    padding: 10px 12px;
+    justify-content: center;
+    font-size: 0.8rem;
   }
   
   .tab-btn i {
-    width: 24px;
-    height: 24px;
+    margin-right: 6px;
   }
   
   .tab-btn span {
-    font-size: 0.7rem;
+    font-size: 0.8rem;
     text-align: center;
     line-height: 1.2;
   }
   
   .app-content {
-    padding-bottom: 80px; /* Space for bottom nav */
+    padding-bottom: 0;
   }
 }
 
@@ -3069,6 +3080,10 @@ textarea {
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.2s ease;
+}
+
+.user-menu.visible {
+  display: flex;
 }
 
 .user-menu:hover {
