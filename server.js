@@ -28,30 +28,76 @@ const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'secure_password_change_thi
 const ADMIN_SESSION_SECRET = process.env.ADMIN_SESSION_SECRET || 'change_this_to_secure_random_string';
 
 // PostgreSQL Database Configuration
-const pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-    ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
-});
+let pool = null;
+try {
+    if (process.env.DATABASE_URL) {
+        pool = new Pool({
+            connectionString: process.env.DATABASE_URL,
+            ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+            max: 20, // Maximum number of clients in the pool
+            idleTimeoutMillis: 30000, // Close idle clients after 30 seconds
+            connectionTimeoutMillis: 2000, // Return an error after 2 seconds if connection could not be established
+        });
+    } else {
+        console.warn('⚠️ DATABASE_URL not set, running in in-memory mode');
+    }
+} catch (error) {
+    console.error('Failed to create database pool:', error);
+    console.warn('⚠️ Running in in-memory mode');
+}
+
+// Safe database query helper
+async function safeQuery(text, params) {
+    if (!pool) {
+        console.warn('⚠️ Database not available, skipping query');
+        return null;
+    }
+    try {
+        return await pool.query(text, params);
+    } catch (error) {
+        console.error('Database query error:', error);
+        return null;
+    }
+}
 
 // Database connection helper
 async function initializeDatabase() {
+    if (!pool) {
+        console.warn('⚠️ No database pool available, skipping database initialization');
+        return;
+    }
+    
     try {
         // Test connection
         await pool.query('SELECT NOW()');
         console.log('✅ Database connected successfully');
         
         // Run schema if table doesn't exist
-        const schema = require('fs').readFileSync('./schema.sql', 'utf8');
-        await pool.query(schema);
-        console.log('✅ Database schema initialized');
+        try {
+            const fs = require('fs');
+            const schemaPath = path.join(__dirname, 'schema.sql');
+            if (fs.existsSync(schemaPath)) {
+                const schema = fs.readFileSync(schemaPath, 'utf8');
+                await pool.query(schema);
+                console.log('✅ Database schema initialized');
+            } else {
+                console.warn('⚠️ schema.sql not found, skipping schema initialization');
+            }
+        } catch (schemaError) {
+            console.error('Schema initialization error:', schemaError);
+            // Continue even if schema fails
+        }
     } catch (error) {
         console.error('Database initialization error:', error);
+        console.warn('⚠️ Continuing without database connection');
         // Continue without database if connection fails
     }
 }
 
-// Initialize database on startup
-initializeDatabase();
+// Initialize database on startup (non-blocking)
+initializeDatabase().catch(err => {
+    console.error('Database initialization failed:', err);
+});
 app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname)));
@@ -151,6 +197,12 @@ async function createBlockchainTransaction(registrationData) {
 // Revenue Tracking Functions
 async function recordRevenue(type, amount, metadata = {}) {
     try {
+        if (!pool) {
+            console.warn('⚠️ Database not available, using in-memory fallback');
+            inMemoryRevenueFallback(type, amount, metadata);
+            return;
+        }
+
         const client = await pool.connect();
         
         try {
@@ -258,30 +310,34 @@ app.post('/api/farmers/register', async (req, res) => {
         const blockchainResult = await createBlockchainTransaction(registrationData);
 
         // Save farmer to database
-        try {
-            await pool.query(
-                `INSERT INTO farmers 
-                (name, province, vegetable_id, premium_tier, blockchain_txid, registration_date, 
-                 crop_size, soil_type, irrigation_type, harvest_date, farm_coordinates, metadata)
-                VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP, $6, $7, $8, $9, $10, $11)`,
-                [
-                    registrationData.farmerName,
-                    registrationData.province,
-                    registrationData.vegetableId,
-                    isPremium,
-                    blockchainResult.txid,
-                    registrationData.cropSize || null,
-                    registrationData.soilType || null,
-                    registrationData.irrigationType || null,
-                    registrationData.harvestDate || null,
-                    registrationData.farmCoordinates || null,
-                    JSON.stringify(registrationData)
-                ]
-            );
-            console.log('Farmer saved to database:', registrationData.farmerName);
-        } catch (dbError) {
-            console.error('Failed to save farmer to database:', dbError);
-            // Continue with registration even if database save fails
+        if (pool) {
+            try {
+                await pool.query(
+                    `INSERT INTO farmers 
+                    (name, province, vegetable_id, premium_tier, blockchain_txid, registration_date, 
+                     crop_size, soil_type, irrigation_type, harvest_date, farm_coordinates, metadata)
+                    VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP, $6, $7, $8, $9, $10, $11)`,
+                    [
+                        registrationData.farmerName,
+                        registrationData.province,
+                        registrationData.vegetableId,
+                        isPremium,
+                        blockchainResult.txid,
+                        registrationData.cropSize || null,
+                        registrationData.soilType || null,
+                        registrationData.irrigationType || null,
+                        registrationData.harvestDate || null,
+                        registrationData.farmCoordinates || null,
+                        JSON.stringify(registrationData)
+                    ]
+                );
+                console.log('Farmer saved to database:', registrationData.farmerName);
+            } catch (dbError) {
+                console.error('Failed to save farmer to database:', dbError);
+                // Continue with registration even if database save fails
+            }
+        } else {
+            console.warn('⚠️ Database not available, skipping farmer database save');
         }
 
         // Record revenue for Cheese Blockchain
@@ -356,30 +412,34 @@ app.post('/api/buyers/register', async (req, res) => {
         });
 
         // Save buyer to database
-        try {
-            await pool.query(
-                `INSERT INTO buyers 
-                (name, company_name, province, premium_tier, blockchain_txid, registration_date, 
-                 contact_email, phone, business_type, annual_volume, preferred_provinces, metadata)
-                VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP, $6, $7, $8, $9, $10, $11)`,
-                [
-                    buyerData.buyerName,
-                    buyerData.companyName,
-                    buyerData.province,
-                    isPremium,
-                    blockchainResult.txid,
-                    buyerData.email || null,
-                    buyerData.phone || null,
-                    buyerData.businessType || null,
-                    buyerData.annualVolume || null,
-                    buyerData.preferredProvinces || null,
-                    JSON.stringify(buyerData)
-                ]
-            );
-            console.log('Buyer saved to database:', buyerData.buyerName);
-        } catch (dbError) {
-            console.error('Failed to save buyer to database:', dbError);
-            // Continue with registration even if database save fails
+        if (pool) {
+            try {
+                await pool.query(
+                    `INSERT INTO buyers 
+                    (name, company_name, province, premium_tier, blockchain_txid, registration_date, 
+                     contact_email, phone, business_type, annual_volume, preferred_provinces, metadata)
+                    VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP, $6, $7, $8, $9, $10, $11)`,
+                    [
+                        buyerData.buyerName,
+                        buyerData.companyName,
+                        buyerData.province,
+                        isPremium,
+                        blockchainResult.txid,
+                        buyerData.email || null,
+                        buyerData.phone || null,
+                        buyerData.businessType || null,
+                        buyerData.annualVolume || null,
+                        buyerData.preferredProvinces || null,
+                        JSON.stringify(buyerData)
+                    ]
+                );
+                console.log('Buyer saved to database:', buyerData.buyerName);
+            } catch (dbError) {
+                console.error('Failed to save buyer to database:', dbError);
+                // Continue with registration even if database save fails
+            }
+        } else {
+            console.warn('⚠️ Database not available, skipping buyer database save');
         }
 
         // Record revenue for Cheese Blockchain
@@ -445,29 +505,33 @@ app.post('/api/matches/create', async (req, res) => {
         });
 
         // Save match to database
-        try {
-            await pool.query(
-                `INSERT INTO matches 
-                (farmer_id, buyer_id, vegetable_id, quantity, match_value, blockchain_txid, match_date, 
-                 status, delivery_terms, payment_terms, metadata)
-                VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP, $7, $8, $9, $10)`,
-                [
-                    matchData.farmerId,
-                    matchData.buyerId,
-                    matchData.vegetableId,
-                    matchData.quantity || null,
-                    matchData.matchValue || null,
-                    blockchainResult.txid,
-                    matchData.status || 'pending',
-                    matchData.deliveryTerms || null,
-                    matchData.paymentTerms || null,
-                    JSON.stringify(matchData)
-                ]
-            );
-            console.log('Match saved to database:', matchData.farmerId, '-', matchData.buyerId);
-        } catch (dbError) {
-            console.error('Failed to save match to database:', dbError);
-            // Continue with matching even if database save fails
+        if (pool) {
+            try {
+                await pool.query(
+                    `INSERT INTO matches 
+                    (farmer_id, buyer_id, vegetable_id, quantity, match_value, blockchain_txid, match_date, 
+                     status, delivery_terms, payment_terms, metadata)
+                    VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP, $7, $8, $9, $10)`,
+                    [
+                        matchData.farmerId,
+                        matchData.buyerId,
+                        matchData.vegetableId,
+                        matchData.quantity || null,
+                        matchData.matchValue || null,
+                        blockchainResult.txid,
+                        matchData.status || 'pending',
+                        matchData.deliveryTerms || null,
+                        matchData.paymentTerms || null,
+                        JSON.stringify(matchData)
+                    ]
+                );
+                console.log('Match saved to database:', matchData.farmerId, '-', matchData.buyerId);
+            } catch (dbError) {
+                console.error('Failed to save match to database:', dbError);
+                // Continue with matching even if database save fails
+            }
+        } else {
+            console.warn('⚠️ Database not available, skipping match database save');
         }
 
         // Record matching fee revenue
@@ -578,6 +642,42 @@ app.get('/api/admin/check', (req, res) => {
 app.get('/api/revenue/analytics', requireAdmin, async (req, res) => {
     try {
         const { timeframe = 'all' } = req.query;
+        
+        // If database not available, use in-memory fallback immediately
+        if (!pool) {
+            console.warn('⚠️ Database not available, using in-memory fallback for analytics');
+            
+            let filteredRevenue = inMemoryRevenue.dailyRevenue;
+            if (timeframe === '7d') {
+                const sevenDaysAgo = new Date();
+                sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+                filteredRevenue = inMemoryRevenue.dailyRevenue.filter(day => 
+                    new Date(day.date) >= sevenDaysAgo
+                );
+            } else if (timeframe === '30d') {
+                const thirtyDaysAgo = new Date();
+                thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+                filteredRevenue = inMemoryRevenue.dailyRevenue.filter(day => 
+                    new Date(day.date) >= thirtyDaysAgo
+                );
+            }
+            
+            res.json({
+                success: true,
+                analytics: {
+                    totalRevenue: inMemoryRevenue.totalRevenue,
+                    totalTransactions: inMemoryRevenue.transactionCount,
+                    feeBreakdown: inMemoryRevenue.feeBreakdown,
+                    averageFeePerTransaction: inMemoryRevenue.transactionCount > 0 
+                        ? (inMemoryRevenue.totalRevenue / inMemoryRevenue.transactionCount).toFixed(2) 
+                        : 0,
+                    dailyRevenue: filteredRevenue,
+                    recentTransactions: inMemoryRevenue.transactions.slice(-10),
+                    revenueGrowth: calculateRevenueGrowth()
+                }
+            });
+            return;
+        }
         
         let dateFilter = '';
         if (timeframe === '7d') {
