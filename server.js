@@ -4,6 +4,7 @@ const cors = require('cors');
 const path = require('path');
 const axios = require('axios');
 const session = require('express-session');
+const { Pool } = require('pg');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -26,7 +27,31 @@ const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'secure_password_change_this';
 const ADMIN_SESSION_SECRET = process.env.ADMIN_SESSION_SECRET || 'change_this_to_secure_random_string';
 
-// Middleware
+// PostgreSQL Database Configuration
+const pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
+});
+
+// Database connection helper
+async function initializeDatabase() {
+    try {
+        // Test connection
+        await pool.query('SELECT NOW()');
+        console.log('✅ Database connected successfully');
+        
+        // Run schema if table doesn't exist
+        const schema = require('fs').readFileSync('./schema.sql', 'utf8');
+        await pool.query(schema);
+        console.log('✅ Database schema initialized');
+    } catch (error) {
+        console.error('Database initialization error:', error);
+        // Continue without database if connection fails
+    }
+}
+
+// Initialize database on startup
+initializeDatabase();
 app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname)));
@@ -51,8 +76,8 @@ function requireAdmin(req, res, next) {
     }
 }
 
-// Revenue Tracking (in-memory for demo, use database in production)
-let revenueData = {
+// In-memory fallback for revenue tracking (used if database fails)
+let inMemoryRevenue = {
     totalRevenue: 0,
     transactionCount: 0,
     feeBreakdown: {
@@ -66,6 +91,33 @@ let revenueData = {
     dailyRevenue: [],
     transactions: []
 };
+
+function inMemoryRevenueFallback(type, amount, metadata) {
+    const today = new Date().toISOString().split('T')[0];
+    
+    inMemoryRevenue.totalRevenue += amount;
+    inMemoryRevenue.transactionCount++;
+    inMemoryRevenue.feeBreakdown[`${type}Fees`] += amount;
+    
+    const existingDay = inMemoryRevenue.dailyRevenue.find(day => day.date === today);
+    if (existingDay) {
+        existingDay.revenue += amount;
+        existingDay.count++;
+    } else {
+        inMemoryRevenue.dailyRevenue.push({
+            date: today,
+            revenue: amount,
+            count: 1
+        });
+    }
+    
+    inMemoryRevenue.transactions.push({
+        type,
+        amount,
+        timestamp: new Date().toISOString(),
+        metadata
+    });
+}
 
 // Blockchain Integration Helper Functions
 async function createBlockchainTransaction(registrationData) {
@@ -97,35 +149,63 @@ async function createBlockchainTransaction(registrationData) {
 }
 
 // Revenue Tracking Functions
-function recordRevenue(type, amount, metadata = {}) {
-    const today = new Date().toISOString().split('T')[0];
-    
-    revenueData.totalRevenue += amount;
-    revenueData.transactionCount++;
-    revenueData.feeBreakdown[`${type}Fees`] += amount;
-    
-    // Track daily revenue
-    const existingDay = revenueData.dailyRevenue.find(day => day.date === today);
-    if (existingDay) {
-        existingDay.revenue += amount;
-        existingDay.count++;
-    } else {
-        revenueData.dailyRevenue.push({
-            date: today,
-            revenue: amount,
-            count: 1
-        });
+async function recordRevenue(type, amount, metadata = {}) {
+    try {
+        const client = await pool.connect();
+        
+        try {
+            await client.query('BEGIN');
+            
+            // Record individual transaction
+            await client.query(
+                'INSERT INTO revenue_transactions (transaction_type, amount, related_id, metadata, transaction_timestamp) VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)',
+                [type, amount, metadata.related_id || null, JSON.stringify(metadata)]
+            );
+            
+            // Update daily revenue
+            const today = new Date().toISOString().split('T')[0];
+            await client.query(`
+                INSERT INTO daily_revenue (date, total_revenue, transaction_count)
+                VALUES ($1, $2, 1)
+                ON CONFLICT (date) DO UPDATE SET
+                    total_revenue = daily_revenue.total_revenue + EXCLUDED.total_revenue,
+                    transaction_count = daily_revenue.transaction_count + 1
+            `, [today, amount]);
+            
+            // Update specific fee type in daily revenue
+            let feeColumn = '';
+            switch(type) {
+                case 'transaction': feeColumn = 'transaction_fees'; break;
+                case 'premium': feeColumn = 'premium_fees'; break;
+                case 'verification': feeColumn = 'verification_fees'; break;
+                case 'buyerRegistration': feeColumn = 'buyer_registration_fees'; break;
+                case 'buyerPremium': feeColumn = 'buyer_premium_fees'; break;
+                case 'buyerMatching': feeColumn = 'buyer_matching_fees'; break;
+            }
+            
+            if (feeColumn) {
+                await client.query(`
+                    UPDATE daily_revenue 
+                    SET ${feeColumn} = COALESCE(${feeColumn}, 0) + $1
+                    WHERE date = $2
+                `, [amount, today]);
+            }
+            
+            await client.query('COMMIT');
+            
+            console.log(`💰 Revenue recorded in database: ${amount} NCH (${type})`);
+        } catch (error) {
+            await client.query('ROLLBACK');
+            throw error;
+        } finally {
+            client.release();
+        }
+    } catch (error) {
+        console.error('Database revenue recording failed:', error);
+        // Fallback to in-memory if database fails
+        console.warn('Using in-memory fallback for revenue tracking');
+        inMemoryRevenueFallback(type, amount, metadata);
     }
-    
-    // Track individual transaction
-    revenueData.transactions.push({
-        type,
-        amount,
-        timestamp: new Date().toISOString(),
-        metadata
-    });
-    
-    console.log(`💰 Revenue recorded: ${amount} NCH (${type}) - Total: ${revenueData.totalRevenue} NCH`);
 }
 
 function generateRegistrationHash(data) {
@@ -176,6 +256,33 @@ app.post('/api/farmers/register', async (req, res) => {
 
         // Create blockchain transaction
         const blockchainResult = await createBlockchainTransaction(registrationData);
+
+        // Save farmer to database
+        try {
+            await pool.query(
+                `INSERT INTO farmers 
+                (name, province, vegetable_id, premium_tier, blockchain_txid, registration_date, 
+                 crop_size, soil_type, irrigation_type, harvest_date, farm_coordinates, metadata)
+                VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP, $6, $7, $8, $9, $10, $11)`,
+                [
+                    registrationData.farmerName,
+                    registrationData.province,
+                    registrationData.vegetableId,
+                    isPremium,
+                    blockchainResult.txid,
+                    registrationData.cropSize || null,
+                    registrationData.soilType || null,
+                    registrationData.irrigationType || null,
+                    registrationData.harvestDate || null,
+                    registrationData.farmCoordinates || null,
+                    JSON.stringify(registrationData)
+                ]
+            );
+            console.log('Farmer saved to database:', registrationData.farmerName);
+        } catch (dbError) {
+            console.error('Failed to save farmer to database:', dbError);
+            // Continue with registration even if database save fails
+        }
 
         // Record revenue for Cheese Blockchain
         recordRevenue('transaction', TRANSACTION_FEE, {
@@ -248,6 +355,33 @@ app.post('/api/buyers/register', async (req, res) => {
             category: 'buyer_registration'
         });
 
+        // Save buyer to database
+        try {
+            await pool.query(
+                `INSERT INTO buyers 
+                (name, company_name, province, premium_tier, blockchain_txid, registration_date, 
+                 contact_email, phone, business_type, annual_volume, preferred_provinces, metadata)
+                VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP, $6, $7, $8, $9, $10, $11)`,
+                [
+                    buyerData.buyerName,
+                    buyerData.companyName,
+                    buyerData.province,
+                    isPremium,
+                    blockchainResult.txid,
+                    buyerData.email || null,
+                    buyerData.phone || null,
+                    buyerData.businessType || null,
+                    buyerData.annualVolume || null,
+                    buyerData.preferredProvinces || null,
+                    JSON.stringify(buyerData)
+                ]
+            );
+            console.log('Buyer saved to database:', buyerData.buyerName);
+        } catch (dbError) {
+            console.error('Failed to save buyer to database:', dbError);
+            // Continue with registration even if database save fails
+        }
+
         // Record revenue for Cheese Blockchain
         recordRevenue('buyerRegistration', BUYER_REGISTRATION_FEE, {
             buyerId: buyerData.id,
@@ -309,6 +443,32 @@ app.post('/api/matches/create', async (req, res) => {
             ...matchData,
             category: 'farmer_buyer_match'
         });
+
+        // Save match to database
+        try {
+            await pool.query(
+                `INSERT INTO matches 
+                (farmer_id, buyer_id, vegetable_id, quantity, match_value, blockchain_txid, match_date, 
+                 status, delivery_terms, payment_terms, metadata)
+                VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP, $7, $8, $9, $10)`,
+                [
+                    matchData.farmerId,
+                    matchData.buyerId,
+                    matchData.vegetableId,
+                    matchData.quantity || null,
+                    matchData.matchValue || null,
+                    blockchainResult.txid,
+                    matchData.status || 'pending',
+                    matchData.deliveryTerms || null,
+                    matchData.paymentTerms || null,
+                    JSON.stringify(matchData)
+                ]
+            );
+            console.log('Match saved to database:', matchData.farmerId, '-', matchData.buyerId);
+        } catch (dbError) {
+            console.error('Failed to save match to database:', dbError);
+            // Continue with matching even if database save fails
+        }
 
         // Record matching fee revenue
         recordRevenue('buyerMatching', BUYER_MATCHING_FEE, {
@@ -415,40 +575,124 @@ app.get('/api/admin/check', (req, res) => {
 });
 
 // Revenue Analytics Endpoint (Admin Only)
-app.get('/api/revenue/analytics', requireAdmin, (req, res) => {
+app.get('/api/revenue/analytics', requireAdmin, async (req, res) => {
     try {
         const { timeframe = 'all' } = req.query;
         
-        let filteredRevenue = revenueData.dailyRevenue;
+        let dateFilter = '';
         if (timeframe === '7d') {
             const sevenDaysAgo = new Date();
             sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-            filteredRevenue = revenueData.dailyRevenue.filter(day => 
-                new Date(day.date) >= sevenDaysAgo
-            );
+            dateFilter = `AND transaction_timestamp >= '${sevenDaysAgo.toISOString()}'`;
         } else if (timeframe === '30d') {
             const thirtyDaysAgo = new Date();
             thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-            filteredRevenue = revenueData.dailyRevenue.filter(day => 
-                new Date(day.date) >= thirtyDaysAgo
-            );
+            dateFilter = `AND transaction_timestamp >= '${thirtyDaysAgo.toISOString()}'`;
         }
-
-        res.json({
-            success: true,
-            analytics: {
-                totalRevenue: revenueData.totalRevenue,
-                totalTransactions: revenueData.transactionCount,
-                feeBreakdown: revenueData.feeBreakdown,
-                averageFeePerTransaction: revenueData.transactionCount > 0 
-                    ? (revenueData.totalRevenue / revenueData.transactionCount).toFixed(2) 
+        
+        // Try to use database first
+        try {
+            // Get total revenue from database
+            const totalRevenueResult = await pool.query(
+                'SELECT COALESCE(SUM(amount), 0) as total_revenue FROM revenue_transactions WHERE 1=1 ' + dateFilter
+            );
+            
+            const transactionCountResult = await pool.query(
+                'SELECT COUNT(*) as count FROM revenue_transactions WHERE 1=1 ' + dateFilter
+            );
+            
+            // Get fee breakdown
+            const feeBreakdownResult = await pool.query(`
+                SELECT 
+                    COALESCE(SUM(CASE WHEN transaction_type = 'transaction' THEN amount END), 0) as transaction_fees,
+                    COALESCE(SUM(CASE WHEN transaction_type = 'premium' THEN amount END), 0) as premium_fees,
+                    COALESCE(SUM(CASE WHEN transaction_type = 'verification' THEN amount END), 0) as verification_fees,
+                    COALESCE(SUM(CASE WHEN transaction_type = 'buyerRegistration' THEN amount END), 0) as buyer_registration_fees,
+                    COALESCE(SUM(CASE WHEN transaction_type = 'buyerPremium' THEN amount END), 0) as buyer_premium_fees,
+                    COALESCE(SUM(CASE WHEN transaction_type = 'buyerMatching' THEN amount END), 0) as buyer_matching_fees
+                FROM revenue_transactions 
+                WHERE 1=1 ${dateFilter}
+            `);
+            
+            // Get recent transactions
+            const recentTransactionsResult = await pool.query(
+                'SELECT transaction_type, amount, transaction_timestamp, metadata FROM revenue_transactions ' +
+                'WHERE 1=1 ' + dateFilter + ' ' +
+                'ORDER BY transaction_timestamp DESC LIMIT 10'
+            );
+            
+            // Get daily revenue
+            const dailyRevenueResult = await pool.query(`
+                SELECT date, total_revenue as revenue, transaction_count as count 
+                FROM daily_revenue 
+                WHERE 1=1 ${dateFilter}
+                ORDER BY date DESC
+            `);
+            
+            const analytics = {
+                totalRevenue: parseFloat(totalRevenueResult.rows[0].total_revenue),
+                totalTransactions: parseInt(transactionCountResult.rows[0].count),
+                feeBreakdown: {
+                    transactionFees: parseFloat(feeBreakdownResult.rows[0].transaction_fees),
+                    premiumFees: parseFloat(feeBreakdownResult.rows[0].premium_fees),
+                    verificationFees: parseFloat(feeBreakdownResult.rows[0].verification_fees),
+                    buyerRegistrationFees: parseFloat(feeBreakdownResult.rows[0].buyer_registration_fees),
+                    buyerPremiumFees: parseFloat(feeBreakdownResult.rows[0].buyer_premium_fees),
+                    buyerMatchingFees: parseFloat(feeBreakdownResult.rows[0].buyer_matching_fees)
+                },
+                averageFeePerTransaction: transactionCountResult.rows[0].count > 0 
+                    ? (parseFloat(totalRevenueResult.rows[0].total_revenue) / parseInt(transactionCountResult.rows[0].count)).toFixed(2) 
                     : 0,
-                dailyRevenue: filteredRevenue,
-                recentTransactions: revenueData.transactions.slice(-10),
+                dailyRevenue: dailyRevenueResult.rows,
+                recentTransactions: recentTransactionsResult.rows.map(tx => ({
+                    type: tx.transaction_type,
+                    amount: parseFloat(tx.amount),
+                    timestamp: tx.transaction_timestamp,
+                    metadata: JSON.parse(tx.metadata)
+                })),
                 revenueGrowth: calculateRevenueGrowth()
+            };
+            
+            res.json({
+                success: true,
+                analytics
+            });
+        } catch (dbError) {
+            // Fallback to in-memory if database fails
+            console.warn('Database query failed, using in-memory fallback:', dbError);
+            
+            let filteredRevenue = inMemoryRevenue.dailyRevenue;
+            if (timeframe === '7d') {
+                const sevenDaysAgo = new Date();
+                sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+                filteredRevenue = inMemoryRevenue.dailyRevenue.filter(day => 
+                    new Date(day.date) >= sevenDaysAgo
+                );
+            } else if (timeframe === '30d') {
+                const thirtyDaysAgo = new Date();
+                thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+                filteredRevenue = inMemoryRevenue.dailyRevenue.filter(day => 
+                    new Date(day.date) >= thirtyDaysAgo
+                );
             }
-        });
+            
+            res.json({
+                success: true,
+                analytics: {
+                    totalRevenue: inMemoryRevenue.totalRevenue,
+                    totalTransactions: inMemoryRevenue.transactionCount,
+                    feeBreakdown: inMemoryRevenue.feeBreakdown,
+                    averageFeePerTransaction: inMemoryRevenue.transactionCount > 0 
+                        ? (inMemoryRevenue.totalRevenue / inMemoryRevenue.transactionCount).toFixed(2) 
+                        : 0,
+                    dailyRevenue: filteredRevenue,
+                    recentTransactions: inMemoryRevenue.transactions.slice(-10),
+                    revenueGrowth: calculateRevenueGrowth()
+                }
+            });
+        }
     } catch (error) {
+        console.error('Failed to fetch revenue analytics:', error);
         res.status(500).json({
             success: false,
             error: 'Failed to fetch revenue analytics'
@@ -458,10 +702,10 @@ app.get('/api/revenue/analytics', requireAdmin, (req, res) => {
 
 // Helper function to calculate revenue growth
 function calculateRevenueGrowth() {
-    if (revenueData.dailyRevenue.length < 2) return 0;
+    if (inMemoryRevenue.dailyRevenue.length < 2) return 0;
     
-    const latest = revenueData.dailyRevenue[revenueData.dailyRevenue.length - 1];
-    const previous = revenueData.dailyRevenue[revenueData.dailyRevenue.length - 2];
+    const latest = inMemoryRevenue.dailyRevenue[inMemoryRevenue.dailyRevenue.length - 1];
+    const previous = inMemoryRevenue.dailyRevenue[inMemoryRevenue.dailyRevenue.length - 2];
     
     if (previous.revenue === 0) return 0;
     

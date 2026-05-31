@@ -26,14 +26,54 @@
 4. Select the repository
 5. Click **"Import"**
 
-### Step 3: Configure Environment Variables
-1. Once project is created, click on **"Variables"** tab
-2. Add the following environment variables:
+### Step 3: Add PostgreSQL Service
+1. After project creation, click **"New Service"** button
+2. Select **"Database"** 
+3. Choose **"PostgreSQL"** from the database options
+4. Railway will provision a PostgreSQL instance with **persistent storage**
+5. Wait for the database to be ready (status shows "Active")
+6. Click on the PostgreSQL service to see connection details
 
-**Note:** Redis is not required for initial deployment. MemoryStore is used for sessions (suitable for single-instance deployment).
+**Important - Persistent Storage:**
+- Railway automatically provides persistent disk storage for PostgreSQL
+- The railway.json configuration includes 10GB disk mount for database data
+- Database data persists across deployments and restarts
+- Data is stored in Railway's managed volumes with automatic backups
+
+### Step 4: Configure Persistent Disk Size (Optional)
+1. Go to the **"PostgreSQL"** service in Railway
+2. Click on **"Settings"** tab
+3. Under **"Storage"** or **"Volumes"**:
+   - Default: 10GB (as configured in railway.json)
+   - Can be increased based on your needs
+   - Recommended minimum: 5GB for production
+4. Save changes - Railway will resize the disk (may require brief downtime)
+
+### Step 5: Initialize Database Schema
+1. Go to the **"PostgreSQL"** service in Railway
+2. Click on **"Console"** or **"Query"** tab
+3. Run the schema.sql file contents to create tables
+4. Copy the contents from `schema.sql` in your repository
+5. Execute the SQL commands to initialize the database
+6. Verify tables are created: farmers, buyers, matches, revenue_transactions, daily_revenue
+
+### Step 6: Configure Environment Variables
+1. Click on your main **app service** (not the database)
+2. Go to **"Variables"** tab
+3. Add the following environment variables:
+
+**Note:** 
+- PostgreSQL is automatically provided by Railway - the `DATABASE_URL` will be auto-populated
+- MemoryStore is used for sessions (suitable for single-instance deployment)
+- The application will fallback to in-memory storage if database connection fails
 
 ```
+# Database Configuration (Auto-populated by Railway)
+DATABASE_URL=postgresql://user:password@host:port/database
+
 # Cheese Blockchain Configuration
+# Note: DigitalOcean node handles internal redundancy (DO → Render → Local → Firebase)
+CHEESE_BLOCKCHAIN_API_URL=http://165.22.252.113:8080
 CHEESE_BLOCKCHAIN_API_URL=http://165.22.252.113:8080
 CHEESE_BLOCKCHAIN_API_KEY=
 
@@ -60,13 +100,13 @@ ADMIN_PASSWORD=CHANGE_THIS_TO_SECURE_PASSWORD
 ADMIN_SESSION_SECRET=CHANGE_THIS_TO_RANDOM_SECRET_STRING
 ```
 
-### Step 4: Deploy
+### Step 7: Deploy
 1. Railway will automatically deploy on first import
 2. Wait for deployment to complete (usually 2-3 minutes)
 3. Click on **"Domains"** tab to get your live URL
 4. Railway will provide a domain like: `farmers-consensus.up.railway.app`
 
-### Step 5: Enable Custom Domain (Optional)
+### Step 8: Enable Custom Domain (Optional)
 1. Click **"Domains"** tab
 2. Click **"Add Domain"**
 3. Enter your custom domain (e.g., `farmers.yourdomain.com`)
@@ -109,10 +149,12 @@ Once deployed, your Farmers Consensus platform will be:
 - **Alerts** - Set up notifications for issues
 
 ### Health Check:
-Your application will have a built-in health check at:
+Your application has a built-in health check at:
 ```
 https://your-domain.railway.app/api/health
 ```
+
+Railway will automatically monitor this endpoint to ensure your application stays healthy. The railway.json configuration includes health check settings with a 100ms timeout.
 
 ## 🔄 Continuous Deployment
 
@@ -148,9 +190,18 @@ Railway will automatically redeploy when you push to GitHub:
 - Verify Cheese Blockchain API is accessible
 
 **Database Issues:**
-- Current version uses in-memory storage
-- For production, consider adding Railway PostgreSQL
-- Revenue data resets on redeploy (current limitation)
+- PostgreSQL service is now included in railway.json configuration
+- Railway will automatically provision PostgreSQL when you deploy
+- Database schema is in schema.sql (auto-applied on first startup)
+- If database connection fails, app falls back to in-memory storage
+- Check Railway logs for database connection errors
+
+**Persistent Storage Issues:**
+- Railway automatically provides persistent disk storage for PostgreSQL
+- Default disk size: 10GB (configurable in railway.json or Railway UI)
+- Database data persists across deployments and restarts
+- If you need more storage, increase disk size in Railway PostgreSQL service settings
+- Data is stored in Railway's managed volumes with automatic backups
 
 **Admin Login Issues:**
 - Verify ADMIN_USERNAME and ADMIN_PASSWORD match environment variables
