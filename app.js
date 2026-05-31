@@ -28,6 +28,9 @@ const app = {
     this.initTableFilters();
     this.initExportCSV();
     
+    // User Authentication
+    this.initAuth();
+    
     // Blockchain Integration
     this.checkBlockchainStatus();
     this.initBuyerRegistration();
@@ -136,6 +139,13 @@ const app = {
           setTimeout(() => {
             this.updateCharts();
           }, 50);
+        }
+        
+        // Load dashboard data when user dashboard tab is opened
+        if (tabId === "user-dashboard-tab") {
+          this.loadDashboardActivity();
+          this.loadDashboardRewards();
+          this.loadTokenHistoryChart();
         }
       });
     });
@@ -1588,6 +1598,1201 @@ const app = {
     window.addEventListener('unhandledrejection', (e) => {
       console.error('Unhandled promise rejection:', e);
     });
+  },
+
+  // ===== USER AUTHENTICATION =====
+  
+  // Initialize authentication state
+  initAuth() {
+    this.currentUser = JSON.parse(localStorage.getItem('user_token')) || null;
+    this.authToken = localStorage.getItem('auth_token') || null;
+    
+    // Setup authentication UI if user is logged in
+    if (this.currentUser) {
+      this.updateAuthUI(true);
+      this.loadUserProfile();
+    }
+    
+    // Initialize login/register forms
+    this.initAuthForms();
+    
+    // Initialize wallet connection
+    this.initWalletConnection();
+    
+    // Initialize user dashboard
+    this.initUserDashboard();
+  },
+
+  // Initialize authentication form handlers
+  initAuthForms() {
+    // Register form handler
+    const registerForm = document.getElementById('register-form');
+    if (registerForm) {
+      registerForm.addEventListener('submit', (e) => this.handleRegister(e));
+    }
+    
+    // Login form handler
+    const loginForm = document.getElementById('login-form');
+    if (loginForm) {
+      loginForm.addEventListener('submit', (e) => this.handleLogin(e));
+    }
+    
+    // Modal handlers
+    this.initModalHandlers();
+  },
+
+  // Initialize modal handlers
+  initModalHandlers() {
+    // Login button
+    const loginBtn = document.getElementById('login-btn');
+    if (loginBtn) {
+      loginBtn.addEventListener('click', () => this.openModal('login-modal'));
+    }
+    
+    // Register button
+    const registerBtn = document.getElementById('register-btn');
+    if (registerBtn) {
+      registerBtn.addEventListener('click', () => this.openModal('register-modal'));
+    }
+    
+    // Close modal buttons
+    const closeLoginModal = document.getElementById('close-login-modal');
+    if (closeLoginModal) {
+      closeLoginModal.addEventListener('click', () => this.closeModal('login-modal'));
+    }
+    
+    const closeRegisterModal = document.getElementById('close-register-modal');
+    if (closeRegisterModal) {
+      closeRegisterModal.addEventListener('click', () => this.closeModal('register-modal'));
+    }
+    
+    const closeProfileModal = document.getElementById('close-profile-modal');
+    if (closeProfileModal) {
+      closeProfileModal.addEventListener('click', () => this.closeModal('profile-modal'));
+    }
+    
+    // Switch between login and register
+    const switchToRegister = document.getElementById('switch-to-register');
+    if (switchToRegister) {
+      switchToRegister.addEventListener('click', () => {
+        this.closeModal('login-modal');
+        this.openModal('register-modal');
+      });
+    }
+    
+    const switchToLogin = document.getElementById('switch-to-login');
+    if (switchToLogin) {
+      switchToLogin.addEventListener('click', () => {
+        this.closeModal('register-modal');
+        this.openModal('login-modal');
+      });
+    }
+    
+    // User dropdown toggle
+    const userDropdownBtn = document.getElementById('user-dropdown-btn');
+    if (userDropdownBtn) {
+      userDropdownBtn.addEventListener('click', () => this.toggleUserDropdown());
+    }
+    
+    // Logout button
+    const logoutBtn = document.getElementById('logout-btn');
+    if (logoutBtn) {
+      logoutBtn.addEventListener('click', () => this.handleLogout());
+    }
+    
+    // Profile link
+    const profileLink = document.querySelector('[href="#profile"]');
+    if (profileLink) {
+      profileLink.addEventListener('click', (e) => {
+        e.preventDefault();
+        this.openProfileModal();
+      });
+    }
+    
+    // Connect wallet button (delegated event handling for dynamic buttons)
+    document.addEventListener('click', (e) => {
+      if (e.target.closest('#connect-wallet-btn')) {
+        e.preventDefault();
+        this.connectWallet();
+      }
+      if (e.target.closest('#disconnect-wallet-btn')) {
+        e.preventDefault();
+        this.disconnectWallet();
+      }
+    });
+    
+    // Close modals on overlay click
+    document.querySelectorAll('.modal-overlay').forEach(overlay => {
+      overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) {
+          this.closeModal(overlay.id);
+        }
+      });
+    });
+    
+    // Close user dropdown when clicking outside
+    document.addEventListener('click', (e) => {
+      const userMenu = document.getElementById('user-menu');
+      const userDropdownMenu = document.getElementById('user-dropdown-menu');
+      
+      if (userMenu && !userMenu.contains(e.target)) {
+        if (userDropdownMenu) {
+          userDropdownMenu.classList.remove('active');
+        }
+      }
+    });
+  },
+
+  // Open modal
+  openModal(modalId) {
+    const modal = document.getElementById(modalId);
+    if (modal) {
+      modal.classList.remove('hidden');
+      document.body.style.overflow = 'hidden'; // Prevent background scrolling
+    }
+  },
+
+  // Close modal
+  closeModal(modalId) {
+    const modal = document.getElementById(modalId);
+    if (modal) {
+      modal.classList.add('hidden');
+      document.body.style.overflow = ''; // Restore scrolling
+      
+      // Clear forms if it's auth modal
+      if (modalId === 'login-modal') {
+        const loginForm = document.getElementById('login-form');
+        if (loginForm) loginForm.reset();
+      } else if (modalId === 'register-modal') {
+        const registerForm = document.getElementById('register-form');
+        if (registerForm) registerForm.reset();
+      }
+    }
+  },
+
+  // Toggle user dropdown
+  toggleUserDropdown() {
+    const userDropdownMenu = document.getElementById('user-dropdown-menu');
+    if (userDropdownMenu) {
+      userDropdownMenu.classList.toggle('active');
+    }
+  },
+
+  // Open profile modal
+  openProfileModal() {
+    this.loadUserProfile();
+    this.openModal('profile-modal');
+    
+    // Load user activity
+    this.loadUserActivity();
+  },
+
+  // Load user activity
+  async loadUserActivity() {
+    if (!this.authToken) return;
+    
+    try {
+      const response = await fetch('/api/user/activity?limit=10', {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${this.authToken}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        this.updateActivityDisplay(result.activities);
+      }
+    } catch (error) {
+      console.error('Activity load error:', error);
+    }
+  },
+
+  // Update activity display
+  updateActivityDisplay(activities) {
+    const activityList = document.getElementById('activity-list');
+    if (activityList) {
+      if (activities && activities.length > 0) {
+        activityList.innerHTML = activities.map(activity => `
+          <div class="activity-item">
+            <div class="activity-type">${activity.activity_type}</div>
+            <div class="activity-description">${activity.activity_description}</div>
+            <div class="activity-time">${new Date(activity.created_at).toLocaleString()}</div>
+          </div>
+        `).join('');
+      } else {
+        activityList.innerHTML = '<p class="no-activity">No recent activity</p>';
+      }
+    }
+  },
+
+  // Handle user registration
+  async handleRegister(event) {
+    event.preventDefault();
+    
+    const form = event.target;
+    const formData = new FormData(form);
+    
+    const userData = {
+      email: formData.get('email'),
+      password: formData.get('password'),
+      fullName: formData.get('fullName'),
+      userType: formData.get('userType'),
+      registrationId: formData.get('registrationId') || null
+    };
+    
+    try {
+      const response = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(userData)
+      });
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        // Store authentication data
+        localStorage.setItem('auth_token', result.token);
+        localStorage.setItem('user_token', JSON.stringify(result.user));
+        
+        this.currentUser = result.user;
+        this.authToken = result.token;
+        
+        // Update UI
+        this.updateAuthUI(true);
+        this.loadUserProfile();
+        
+        // Show success message
+        this.showNotification('Registration successful! Welcome to Farmers Consensus.', 'success');
+        
+        // Redirect to dashboard
+        if (result.user.registrationId) {
+          this.showRegistrationSuccess(result.user.registrationId);
+        }
+      } else {
+        this.showNotification(result.error || 'Registration failed', 'error');
+      }
+    } catch (error) {
+      console.error('Registration error:', error);
+      this.showNotification('Registration failed. Please try again.', 'error');
+    }
+  },
+
+  // Handle user login
+  async handleLogin(event) {
+    event.preventDefault();
+    
+    const form = event.target;
+    const formData = new FormData(form);
+    
+    const loginData = {
+      email: formData.get('email'),
+      password: formData.get('password')
+    };
+    
+    try {
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(loginData)
+      });
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        // Store authentication data
+        localStorage.setItem('auth_token', result.token);
+        localStorage.setItem('user_token', JSON.stringify(result.user));
+        
+        this.currentUser = result.user;
+        this.authToken = result.token;
+        
+        // Update UI
+        this.updateAuthUI(true);
+        this.loadUserProfile();
+        
+        // Show success message
+        this.showNotification('Login successful! Welcome back.', 'success');
+      } else {
+        this.showNotification(result.error || 'Login failed', 'error');
+      }
+    } catch (error) {
+      console.error('Login error:', error);
+      this.showNotification('Login failed. Please try again.', 'error');
+    }
+  },
+
+  // Handle user logout
+  async handleLogout() {
+    try {
+      if (this.authToken) {
+        await fetch('/api/auth/logout', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${this.authToken}`,
+            'Content-Type': 'application/json'
+          }
+        });
+      }
+    } catch (error) {
+      console.error('Logout error:', error);
+    } finally {
+      // Clear local storage regardless of API call result
+      localStorage.removeItem('auth_token');
+      localStorage.removeItem('user_token');
+      
+      this.currentUser = null;
+      this.authToken = null;
+      
+      // Update UI
+      this.updateAuthUI(false);
+      
+      // Show notification
+      this.showNotification('Logged out successfully', 'info');
+    }
+  },
+
+  // Load user profile data
+  async loadUserProfile() {
+    if (!this.authToken || !this.currentUser) return;
+    
+    try {
+      const response = await fetch('/api/user/profile', {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${this.authToken}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        // Update user data
+        localStorage.setItem('user_token', JSON.stringify(result.user));
+        this.currentUser = result.user;
+        
+        // Update balance display
+        this.updateBalanceDisplay(result.user);
+        
+        // Update rewards display
+        this.updateRewardsDisplay(result.recentRewards);
+        
+        // Update profile modal fields
+        this.updateProfileModal(result.user);
+        
+        // Load reward statistics
+        this.loadRewardStatistics();
+        
+        // Load token prices
+        this.loadTokenPrices();
+      }
+    } catch (error) {
+      console.error('Profile load error:', error);
+    }
+  },
+
+  // Load reward statistics
+  async loadRewardStatistics() {
+    if (!this.authToken) return;
+    
+    try {
+      const response = await fetch('/api/user/rewards/stats', {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${this.authToken}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        this.updateRewardStatsDisplay(result.stats);
+      }
+    } catch (error) {
+      console.error('Reward stats error:', error);
+    }
+  },
+
+  // Update reward statistics display
+  updateRewardStatsDisplay(stats) {
+    const totalRewardsElements = document.querySelectorAll('.stat-total-rewards');
+    totalRewardsElements.forEach(element => {
+      element.textContent = `${stats.totalRewards} NCH`;
+    });
+    
+    const claimedElements = document.querySelectorAll('.stat-claimed');
+    claimedElements.forEach(element => {
+      element.textContent = `${stats.claimed} NCH`;
+    });
+    
+    const unclaimedElements = document.querySelectorAll('.stat-unclaimed');
+    unclaimedElements.forEach(element => {
+      element.textContent = `${stats.unclaimed} NCH`;
+    });
+  },
+
+  // Load token prices
+  async loadTokenPrices() {
+    try {
+      const response = await fetch('/api/tokens/prices');
+      const result = await response.json();
+      
+      if (result.success) {
+        this.currentTokenPrices = result.prices;
+        this.updateTokenPriceDisplay();
+      }
+    } catch (error) {
+      console.error('Token price error:', error);
+    }
+  },
+
+  // Update token price display
+  updateTokenPriceDisplay() {
+    if (!this.currentTokenPrices) return;
+    
+    // Update price displays
+    const priceElements = document.querySelectorAll('.nch-price-usd');
+    priceElements.forEach(element => {
+      element.textContent = `$${this.currentTokenPrices.USD.toFixed(4)}`;
+    });
+    
+    const phpPriceElements = document.querySelectorAll('.nch-price-php');
+    phpPriceElements.forEach(element => {
+      element.textContent = `₱${this.currentTokenPrices.PHP.toFixed(2)}`;
+    });
+    
+    // Update balance conversions
+    this.updateBalanceConversions();
+  },
+
+  // Update balance with currency conversions
+  updateBalanceConversions() {
+    if (!this.currentTokenPrices || !this.currentUser) return;
+    
+    const nchBalance = this.currentUser.nchBalance || 0;
+    
+    const usdValueElements = document.querySelectorAll('.balance-usd-value');
+    usdValueElements.forEach(element => {
+      element.textContent = `$${(nchBalance * this.currentTokenPrices.USD).toFixed(2)}`;
+    });
+    
+    const phpValueElements = document.querySelectorAll('.balance-php-value');
+    phpValueElements.forEach(element => {
+      element.textContent = `₱${(nchBalance * this.currentTokenPrices.PHP).toFixed(2)}`;
+    });
+  },
+
+  // Convert tokens
+  async convertTokens(amount, fromCurrency, toCurrency) {
+    try {
+      const response = await fetch(`/api/tokens/convert?amount=${amount}&from=${fromCurrency}&to=${toCurrency}`);
+      const result = await response.json();
+      
+      if (result.success) {
+        return result;
+      } else {
+        throw new Error(result.error || 'Conversion failed');
+      }
+    } catch (error) {
+      console.error('Token conversion error:', error);
+      throw error;
+    }
+  },
+
+  // Update profile modal fields
+  updateProfileModal(user) {
+    // Update profile name
+    const profileName = document.getElementById('profile-name');
+    if (profileName) {
+      profileName.textContent = user.fullName || user.email;
+    }
+    
+    // Update profile email
+    const profileEmail = document.getElementById('profile-email');
+    if (profileEmail) {
+      profileEmail.textContent = user.email;
+    }
+    
+    // Update profile role
+    const profileRole = document.getElementById('profile-role');
+    if (profileRole) {
+      profileRole.textContent = user.userType ? user.userType.charAt(0).toUpperCase() + user.userType.slice(1) : 'User';
+    }
+    
+    // Update member since date
+    const memberSince = document.getElementById('profile-member-since');
+    if (memberSince && user.created_at) {
+      memberSince.textContent = new Date(user.created_at).toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+      });
+    }
+    
+    // Update wallet address display
+    const walletDisplay = document.getElementById('wallet-address-display');
+    if (walletDisplay) {
+      if (user.walletAddress) {
+        walletDisplay.innerHTML = `
+          <span class="wallet-address">${user.walletAddress.slice(0, 6)}...${user.walletAddress.slice(-4)}</span>
+          <button class="btn btn-sm btn-outline" id="disconnect-wallet-btn">
+            <i data-lucide="unlink"></i>
+            <span>Disconnect</span>
+          </button>
+        `;
+        
+        // Re-initialize Lucide icons for the new button
+        if (window.lucide) {
+          window.lucide.createIcons();
+        }
+      } else {
+        walletDisplay.innerHTML = `
+          <span class="wallet-placeholder">No wallet connected</span>
+          <button class="btn btn-sm btn-outline" id="connect-wallet-btn">
+            <i data-lucide="link"></i>
+            <span>Connect Wallet</span>
+          </button>
+        `;
+      }
+    }
+  },
+
+  // Update balance display in UI
+  updateBalanceDisplay(user) {
+    const balanceElements = document.querySelectorAll('.user-balance');
+    balanceElements.forEach(element => {
+      element.textContent = `${user.nchBalance || 0} NCH`;
+    });
+    
+    const totalEarnedElements = document.querySelectorAll('.user-total-earned');
+    totalEarnedElements.forEach(element => {
+      element.textContent = `${user.totalEarned || 0} NCH`;
+    });
+  },
+
+  // Update rewards display in UI
+  updateRewardsDisplay(rewards) {
+    const rewardsContainer = document.getElementById('rewards-list');
+    if (rewardsContainer) {
+      if (rewards && rewards.length > 0) {
+        rewardsContainer.innerHTML = rewards.map(reward => `
+          <div class="reward-item ${reward.is_claimed ? 'claimed' : 'unclaimed'}">
+            <div class="reward-type">${reward.reward_type}</div>
+            <div class="reward-amount">${reward.reward_amount} ${reward.reward_token}</div>
+            <div class="reward-description">${reward.description}</div>
+            ${!reward.is_claimed ? `
+              <button class="claim-reward-btn" data-reward-id="${reward.id}">
+                Claim Reward
+              </button>
+            ` : '<div class="claimed-badge">Claimed</div>'}
+          </div>
+        `).join('');
+        
+        // Add claim button handlers
+        document.querySelectorAll('.claim-reward-btn').forEach(btn => {
+          btn.addEventListener('click', (e) => {
+            const rewardId = e.target.dataset.rewardId;
+            this.claimReward(rewardId);
+          });
+        });
+      } else {
+        rewardsContainer.innerHTML = '<p class="no-rewards">No rewards available yet</p>';
+      }
+    }
+  },
+
+  // Claim a reward
+  async claimReward(rewardId) {
+    if (!this.authToken) return;
+    
+    try {
+      const response = await fetch('/api/user/rewards/claim', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.authToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ rewardId })
+      });
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        this.showNotification(`Successfully claimed ${result.claimedAmount} ${result.token}!`, 'success');
+        this.loadUserProfile(); // Reload profile to update balance
+      } else {
+        this.showNotification(result.error || 'Failed to claim reward', 'error');
+      }
+    } catch (error) {
+      console.error('Reward claim error:', error);
+      this.showNotification('Failed to claim reward. Please try again.', 'error');
+    }
+  },
+
+  // Update authentication UI based on login state
+  updateAuthUI(isLoggedIn) {
+    const authButtons = document.querySelectorAll('.auth-button');
+    const userMenu = document.querySelectorAll('.user-menu');
+    const loginRequiredElements = document.querySelectorAll('.login-required');
+    
+    if (isLoggedIn) {
+      // Show user menu, hide auth buttons
+      authButtons.forEach(btn => btn.style.display = 'none');
+      userMenu.forEach(menu => menu.style.display = 'block');
+      loginRequiredElements.forEach(el => el.classList.remove('hidden'));
+      
+      // Update user display info
+      userMenu.forEach(menu => {
+        const userNameElement = menu.querySelector('.user-name');
+        if (userNameElement && this.currentUser) {
+          userNameElement.textContent = this.currentUser.fullName || this.currentUser.email;
+        }
+      });
+    } else {
+      // Show auth buttons, hide user menu
+      authButtons.forEach(btn => btn.style.display = 'block');
+      userMenu.forEach(menu => menu.style.display = 'none');
+      loginRequiredElements.forEach(el => el.classList.add('hidden'));
+    }
+  },
+
+  // Show notification message
+  showNotification(message, type = 'info') {
+    // Create notification element
+    const notification = document.createElement('div');
+    notification.className = `notification notification-${type}`;
+    notification.textContent = message;
+    
+    // Add to page
+    document.body.appendChild(notification);
+    
+    // Auto remove after 3 seconds
+    setTimeout(() => {
+      notification.remove();
+    }, 3000);
+  },
+
+  // Show registration success
+  showRegistrationSuccess(registrationId) {
+    // This would typically show a modal or redirect to a success page
+    this.showNotification(`Registration successful! Your ID: ${registrationId}`, 'success');
+    
+    // Switch to analytics tab to see the registration
+    setTimeout(() => {
+      this.showDashboardDetails();
+    }, 1500);
+  },
+
+  // ===== WALLET CONNECTION =====
+  
+  // Initialize wallet connection
+  initWalletConnection() {
+    // Check if wallet is already connected
+    if (window.ethereum) {
+      this.checkExistingConnection();
+    }
+    
+    // Setup wallet event listeners
+    this.setupWalletEvents();
+  },
+
+  // Check for existing wallet connection
+  async checkExistingConnection() {
+    try {
+      const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+      if (accounts.length > 0) {
+        this.walletAddress = accounts[0];
+        this.updateWalletUI(true);
+        
+        // If user is logged in, update their profile with wallet address
+        if (this.currentUser && this.authToken) {
+          this.linkWalletToAccount(this.walletAddress);
+        }
+      }
+    } catch (error) {
+      console.error('Error checking existing connection:', error);
+    }
+  },
+
+  // Setup wallet event listeners
+  setupWalletEvents() {
+    if (window.ethereum) {
+      // Handle account changes
+      window.ethereum.on('accountsChanged', (accounts) => {
+        if (accounts.length > 0) {
+          this.walletAddress = accounts[0];
+          this.updateWalletUI(true);
+          if (this.currentUser && this.authToken) {
+            this.linkWalletToAccount(this.walletAddress);
+          }
+        } else {
+          this.walletAddress = null;
+          this.updateWalletUI(false);
+        }
+      });
+      
+      // Handle chain changes
+      window.ethereum.on('chainChanged', () => {
+        // Reload page on chain change
+        window.location.reload();
+      });
+    }
+  },
+
+  // Connect wallet
+  async connectWallet() {
+    if (!window.ethereum) {
+      this.showNotification('Please install MetaMask to connect your wallet', 'error');
+      return;
+    }
+    
+    try {
+      const accounts = await window.ethereum.request({ 
+        method: 'eth_requestAccounts' 
+      });
+      
+      if (accounts.length > 0) {
+        this.walletAddress = accounts[0];
+        this.updateWalletUI(true);
+        this.showNotification('Wallet connected successfully!', 'success');
+        
+        // If user is logged in, link wallet to their account
+        if (this.currentUser && this.authToken) {
+          await this.linkWalletToAccount(this.walletAddress);
+        }
+        
+        // Get NCH token balance
+        await this.getNCHTokenBalance();
+      }
+    } catch (error) {
+      console.error('Wallet connection error:', error);
+      if (error.code === 4001) {
+        this.showNotification('Wallet connection rejected', 'error');
+      } else {
+        this.showNotification('Failed to connect wallet', 'error');
+      }
+    }
+  },
+
+  // Disconnect wallet
+  async disconnectWallet() {
+    this.walletAddress = null;
+    this.updateWalletUI(false);
+    this.showNotification('Wallet disconnected', 'info');
+    
+    // Update user profile to remove wallet address
+    if (this.currentUser && this.authToken) {
+      try {
+        await fetch('/api/user/profile', {
+          method: 'PUT',
+          headers: {
+            'Authorization': `Bearer ${this.authToken}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ walletAddress: null })
+        });
+      } catch (error) {
+        console.error('Error unlinking wallet:', error);
+      }
+    }
+  },
+
+  // Link wallet to user account
+  async linkWalletToAccount(walletAddress) {
+    try {
+      const response = await fetch('/api/user/profile', {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${this.authToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ walletAddress })
+      });
+      
+      if (response.ok) {
+        console.log('Wallet linked to account successfully');
+      }
+    } catch (error) {
+      console.error('Error linking wallet to account:', error);
+    }
+  },
+
+  // Update wallet UI
+  updateWalletUI(isConnected) {
+    const connectBtn = document.getElementById('connect-wallet-btn');
+    const disconnectBtn = document.getElementById('disconnect-wallet-btn');
+    const walletDisplay = document.getElementById('wallet-address-display');
+    
+    if (isConnected && this.walletAddress) {
+      // Show connected state
+      if (walletDisplay) {
+        walletDisplay.innerHTML = `
+          <span class="wallet-address">${this.walletAddress.slice(0, 6)}...${this.walletAddress.slice(-4)}</span>
+          <button class="btn btn-sm btn-outline" id="disconnect-wallet-btn">
+            <i data-lucide="unlink"></i>
+            <span>Disconnect</span>
+          </button>
+        `;
+        
+        // Re-initialize Lucide icons
+        if (window.lucide) {
+          window.lucide.createIcons();
+        }
+        
+        // Re-attach disconnect handler
+        const newDisconnectBtn = document.getElementById('disconnect-wallet-btn');
+        if (newDisconnectBtn) {
+          newDisconnectBtn.addEventListener('click', () => this.disconnectWallet());
+        }
+      }
+      
+      // Add connect button handlers if they exist
+      if (connectBtn) {
+        connectBtn.style.display = 'none';
+      }
+    } else {
+      // Show disconnected state
+      if (walletDisplay) {
+        walletDisplay.innerHTML = `
+          <span class="wallet-placeholder">No wallet connected</span>
+          <button class="btn btn-sm btn-outline" id="connect-wallet-btn">
+            <i data-lucide="link"></i>
+            <span>Connect Wallet</span>
+          </button>
+        `;
+        
+        // Re-initialize Lucide icons
+        if (window.lucide) {
+          window.lucide.createIcons();
+        }
+        
+        // Re-attach connect handler
+        const newConnectBtn = document.getElementById('connect-wallet-btn');
+        if (newConnectBtn) {
+          newConnectBtn.addEventListener('click', () => this.connectWallet());
+        }
+      }
+    }
+  },
+
+  // Get NCH token balance
+  async getNCHTokenBalance() {
+    if (!this.walletAddress || !window.ethereum) return;
+    
+    try {
+      // This would typically involve calling a smart contract
+      // For now, we'll simulate the token balance
+      // In production, you would use the actual NCH token contract address and ABI
+      
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      
+      // Example token contract call (you would need the actual contract address and ABI)
+      // const tokenContract = new ethers.Contract(tokenAddress, tokenABI, provider);
+      // const balance = await tokenContract.balanceOf(this.walletAddress);
+      
+      // For now, we'll use a placeholder
+      console.log('Wallet connected, token balance would be fetched here');
+      
+    } catch (error) {
+      console.error('Error getting token balance:', error);
+    }
+  },
+
+  // Get current network
+  async getCurrentNetwork() {
+    if (!window.ethereum) return null;
+    
+    try {
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const network = await provider.getNetwork();
+      return {
+        chainId: network.chainId.toString(),
+        name: network.name
+      };
+    } catch (error) {
+      console.error('Error getting network:', error);
+      return null;
+    }
+  },
+
+  // ===== USER DASHBOARD =====
+  
+  // Initialize user dashboard
+  initUserDashboard() {
+    // Setup dashboard refresh button
+    const refreshBtn = document.getElementById('refresh-dashboard-btn');
+    if (refreshBtn) {
+      refreshBtn.addEventListener('click', () => this.refreshDashboard());
+    }
+    
+    // Setup view all buttons
+    const viewActivityBtn = document.getElementById('view-all-activity-btn');
+    if (viewActivityBtn) {
+      viewActivityBtn.addEventListener('click', () => {
+        this.openProfileModal();
+      });
+    }
+    
+    const viewRewardsBtn = document.getElementById('view-all-rewards-btn');
+    if (viewRewardsBtn) {
+      viewRewardsBtn.addEventListener('click', () => {
+        this.openProfileModal();
+      });
+    }
+    
+    // Initialize token performance chart
+    this.initTokenPerformanceChart();
+  },
+
+  // Refresh dashboard data
+  async refreshDashboard() {
+    if (!this.authToken) return;
+    
+    try {
+      await this.loadUserProfile();
+      await this.loadUserActivity();
+      await this.loadRewardStatistics();
+      await this.loadTokenPrices();
+      
+      this.showNotification('Dashboard refreshed', 'success');
+    } catch (error) {
+      console.error('Dashboard refresh error:', error);
+      this.showNotification('Failed to refresh dashboard', 'error');
+    }
+  },
+
+  // Load dashboard-specific activity
+  async loadDashboardActivity() {
+    if (!this.authToken) return;
+    
+    try {
+      const response = await fetch('/api/user/activity?limit=5', {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${this.authToken}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        this.updateDashboardActivity(result.activities);
+      }
+    } catch (error) {
+      console.error('Dashboard activity error:', error);
+    }
+  },
+
+  // Update dashboard activity display
+  updateDashboardActivity(activities) {
+    const activityList = document.getElementById('dashboard-activity-list');
+    if (activityList) {
+      if (activities && activities.length > 0) {
+        activityList.innerHTML = activities.map(activity => `
+          <div class="activity-item">
+            <div class="activity-type">${activity.activity_type}</div>
+            <div class="activity-description">${activity.activity_description}</div>
+            <div class="activity-time">${this.formatTimeAgo(new Date(activity.created_at))}</div>
+          </div>
+        `).join('');
+      } else {
+        activityList.innerHTML = '<p class="no-activity">No recent activity</p>';
+      }
+    }
+  },
+
+  // Load dashboard-specific rewards
+  async loadDashboardRewards() {
+    if (!this.authToken) return;
+    
+    try {
+      const response = await fetch('/api/user/rewards', {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${this.authToken}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        this.updateDashboardRewards(result.rewards.slice(0, 5));
+      }
+    } catch (error) {
+      console.error('Dashboard rewards error:', error);
+    }
+  },
+
+  // Update dashboard rewards display
+  updateDashboardRewards(rewards) {
+    const rewardsList = document.getElementById('dashboard-rewards-list');
+    if (rewardsList) {
+      if (rewards && rewards.length > 0) {
+        rewardsList.innerHTML = rewards.map(reward => `
+          <div class="reward-item ${reward.is_claimed ? 'claimed' : 'unclaimed'}">
+            <div class="reward-type">${reward.reward_type}</div>
+            <div class="reward-amount">${reward.reward_amount} ${reward.reward_token}</div>
+            <div class="reward-description">${reward.description}</div>
+            ${!reward.is_claimed ? `
+              <button class="claim-reward-btn" data-reward-id="${reward.id}">
+                Claim Reward
+              </button>
+            ` : '<div class="claimed-badge">Claimed</div>'}
+          </div>
+        `).join('');
+        
+        // Add claim button handlers
+        rewardsList.querySelectorAll('.claim-reward-btn').forEach(btn => {
+          btn.addEventListener('click', (e) => {
+            const rewardId = e.target.dataset.rewardId;
+            this.claimReward(rewardId);
+          });
+        });
+      } else {
+        rewardsList.innerHTML = '<p class="no-rewards">No rewards available yet</p>';
+      }
+    }
+  },
+
+  // Initialize token performance chart
+  initTokenPerformanceChart() {
+    const canvas = document.getElementById('token-performance-chart');
+    if (!canvas) return;
+    
+    // Load price history and create chart
+    this.loadTokenHistoryChart();
+  },
+
+  // Load token history chart
+  async loadTokenHistoryChart() {
+    try {
+      const response = await fetch('/api/tokens/history?timeframe=7d&currency=USD');
+      const result = await response.json();
+      
+      if (result.success && window.Chart) {
+        this.createTokenChart(result.history);
+      }
+    } catch (error) {
+      console.error('Token history chart error:', error);
+    }
+  },
+
+  // Create token performance chart
+  createTokenChart(history) {
+    const canvas = document.getElementById('token-performance-chart');
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext('2d');
+    
+    // Destroy existing chart if it exists
+    if (this.tokenChart) {
+      this.tokenChart.destroy();
+    }
+    
+    const labels = history.map(point => {
+      const date = new Date(point.timestamp);
+      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    });
+    
+    const data = history.map(point => point.price);
+    
+    this.tokenChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: 'NCH Price (USD)',
+          data: data,
+          borderColor: '#10b981',
+          backgroundColor: this.theme === 'dark' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(16, 185, 129, 0.2)',
+          fill: true,
+          tension: 0.4,
+          pointBackgroundColor: '#10b981',
+          pointBorderColor: '#ffffff',
+          pointBorderWidth: 2,
+          pointRadius: 4
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            display: false
+          },
+          tooltip: {
+            backgroundColor: this.theme === 'dark' ? '#1c2c24' : '#ffffff',
+            titleColor: this.theme === 'dark' ? '#ffffff' : '#000000',
+            bodyColor: this.theme === 'dark' ? '#ffffff' : '#000000',
+            borderColor: '#10b981',
+            borderWidth: 1
+          }
+        },
+        scales: {
+          x: {
+            grid: {
+              display: false
+            },
+            ticks: {
+              color: this.theme === 'dark' ? '#6b7280' : '#4b5563'
+            }
+          },
+          y: {
+            grid: {
+              color: this.theme === 'dark' ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'
+            },
+            ticks: {
+              color: this.theme === 'dark' ? '#6b7280' : '#4b5563',
+              callback: function(value) {
+                return '$' + value.toFixed(4);
+              }
+            }
+          }
+        }
+      }
+    });
+  },
+
+  // Format time ago
+  formatTimeAgo(date) {
+    const seconds = Math.floor((new Date() - date) / 1000);
+    
+    let interval = seconds / 31536000;
+    if (interval > 1) {
+      return Math.floor(interval) + ' years ago';
+    }
+    
+    interval = seconds / 2592000;
+    if (interval > 1) {
+      return Math.floor(interval) + ' months ago';
+    }
+    
+    interval = seconds / 86400;
+    if (interval > 1) {
+      return Math.floor(interval) + ' days ago';
+    }
+    
+    interval = seconds / 3600;
+    if (interval > 1) {
+      return Math.floor(interval) + ' hours ago';
+    }
+    
+    interval = seconds / 60;
+    if (interval > 1) {
+      return Math.floor(interval) + ' minutes ago';
+    }
+    
+    return Math.floor(seconds) + ' seconds ago';
   }
 };
 

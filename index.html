@@ -23,6 +23,9 @@
   <!-- Lucide Icons via CDN -->
   <script src="https://unpkg.com/lucide@latest"></script>
   
+  <!-- Ethers.js for Web3 Integration -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.7.0/ethers.umd.min.js"></script>
+  
   <!-- Mobile Web App Manifest -->
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="icon-192.svg">
@@ -55,6 +58,56 @@
           <span class="blockchain-indicator" id="blockchain-indicator"></span>
           <span id="blockchain-status-text">Connecting...</span>
         </div>
+        
+        <!-- Authentication Buttons -->
+        <div class="auth-buttons">
+          <button class="auth-button login-btn" id="login-btn">
+            <i data-lucide="log-in"></i>
+            <span>Login</span>
+          </button>
+          <button class="auth-button register-btn" id="register-btn">
+            <i data-lucide="user-plus"></i>
+            <span>Register</span>
+          </button>
+        </div>
+        
+        <!-- User Menu (hidden by default) -->
+        <div class="user-menu hidden" id="user-menu">
+          <div class="user-info">
+            <div class="user-avatar">
+              <i data-lucide="user"></i>
+            </div>
+            <div class="user-details">
+              <span class="user-name">Loading...</span>
+              <span class="user-balance">0 NCH</span>
+            </div>
+          </div>
+          <div class="user-dropdown">
+            <button class="user-dropdown-btn" id="user-dropdown-btn">
+              <i data-lucide="chevron-down"></i>
+            </button>
+            <div class="user-dropdown-menu" id="user-dropdown-menu">
+              <a href="#profile" class="user-dropdown-item">
+                <i data-lucide="user"></i>
+                <span>Profile</span>
+              </a>
+              <a href="#balance" class="user-dropdown-item">
+                <i data-lucide="wallet"></i>
+                <span>Balance</span>
+              </a>
+              <a href="#rewards" class="user-dropdown-item">
+                <i data-lucide="gift"></i>
+                <span>Rewards</span>
+              </a>
+              <div class="user-dropdown-divider"></div>
+              <button class="user-dropdown-item logout-btn" id="logout-btn">
+                <i data-lucide="log-out"></i>
+                <span>Logout</span>
+              </button>
+            </div>
+          </div>
+        </div>
+        
         <button id="theme-toggle" class="icon-btn" title="Toggle Light/Dark Mode">
           <i data-lucide="sun"></i>
         </button>
@@ -94,6 +147,10 @@
       <button class="tab-btn" data-tab="analytics-tab">
         <i data-lucide="bar-chart-3"></i>
         <span>Consensus Dashboard</span>
+      </button>
+      <button class="tab-btn login-required hidden" data-tab="user-dashboard-tab">
+        <i data-lucide="user"></i>
+        <span>My Dashboard</span>
       </button>
     </nav>
 
@@ -691,6 +748,111 @@
 
       </section>
 
+      <!-- TAB 4: USER DASHBOARD (Login Required) -->
+      <section id="user-dashboard-tab" class="tab-panel login-required">
+        
+        <!-- User Dashboard Header -->
+        <div class="dashboard-header card">
+          <div class="dashboard-header-content">
+            <h2>My Dashboard</h2>
+            <p>Track your earnings, rewards, and activity</p>
+          </div>
+          <div class="dashboard-header-actions">
+            <button class="btn btn-outline" id="refresh-dashboard-btn">
+              <i data-lucide="refresh-cw"></i>
+              <span>Refresh</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- User Earnings Overview -->
+        <div class="user-earnings-grid">
+          <div class="earning-card card animate-scale-up">
+            <div class="earning-icon">
+              <i data-lucide="wallet"></i>
+            </div>
+            <div class="earning-content">
+              <span class="earning-label">Current Balance</span>
+              <span class="earning-value user-balance">0 NCH</span>
+              <span class="earning-sub balance-usd-value">$0.00 USD</span>
+            </div>
+          </div>
+
+          <div class="earning-card card animate-scale-up">
+            <div class="earning-icon">
+              <i data-lucide="gift"></i>
+            </div>
+            <div class="earning-content">
+              <span class="earning-label">Total Rewards Earned</span>
+              <span class="earning-value stat-total-rewards">0 NCH</span>
+              <span class="earning-sub">From all activities</span>
+            </div>
+          </div>
+
+          <div class="earning-card card animate-scale-up">
+            <div class="earning-icon">
+              <i data-lucide="check-circle"></i>
+            </div>
+            <div class="earning-content">
+              <span class="earning-label">Claimed Rewards</span>
+              <span class="earning-value stat-claimed">0 NCH</span>
+              <span class="earning-sub">Successfully claimed</span>
+            </div>
+          </div>
+
+          <div class="earning-card card animate-scale-up">
+            <div class="earning-icon">
+              <i data-lucide="clock"></i>
+            </div>
+            <div class="earning-content">
+              <span class="earning-label">Pending Rewards</span>
+              <span class="earning-value stat-unclaimed">0 NCH</span>
+              <span class="earning-sub">Ready to claim</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Recent Activity and Rewards -->
+        <div class="dashboard-content-grid">
+          <div class="dashboard-section card">
+            <div class="section-header">
+              <h3>Recent Activity</h3>
+              <button class="btn btn-sm btn-outline" id="view-all-activity-btn">View All</button>
+            </div>
+            <div class="activity-list" id="dashboard-activity-list">
+              <p class="no-activity">Loading your activity...</p>
+            </div>
+          </div>
+
+          <div class="dashboard-section card">
+            <div class="section-header">
+              <h3>Recent Rewards</h3>
+              <button class="btn btn-sm btn-outline" id="view-all-rewards-btn">View All</button>
+            </div>
+            <div class="rewards-list" id="dashboard-rewards-list">
+              <p class="no-rewards">Loading your rewards...</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Token Performance -->
+        <div class="dashboard-section card">
+          <div class="section-header">
+            <h3>NCH Token Performance</h3>
+            <div class="token-price-info">
+              <span class="price-label">Current Price:</span>
+              <span class="price-value nch-price-usd">$0.0000</span>
+              <span class="price-divider">|</span>
+              <span class="price-value nch-price-php">₱0.00</span>
+            </div>
+          </div>
+          <div class="token-chart-container">
+            <canvas id="token-performance-chart"></canvas>
+          </div>
+        </div>
+
+      </section>
+
     </main>
 
     <!-- Platform Footer -->
@@ -744,6 +906,211 @@
         <span>Proceed to Analytics Dashboard</span>
         <i data-lucide="arrow-right"></i>
       </button>
+    </div>
+  </div>
+
+  <!-- Login Modal -->
+  <div class="modal-overlay hidden" id="login-modal">
+    <div class="modal-card animate-scale-up auth-modal">
+      <div class="modal-header">
+        <h2>Welcome Back</h2>
+        <p>Login to access your Farmers Consensus account</p>
+        <button class="modal-close-btn-icon" id="close-login-modal">
+          <i data-lucide="x"></i>
+        </button>
+      </div>
+      
+      <form id="login-form" class="auth-form">
+        <div class="form-group">
+          <label for="login-email">Email Address</label>
+          <div class="input-wrapper">
+            <i data-lucide="mail" class="input-icon"></i>
+            <input type="email" id="login-email" name="email" placeholder="you@example.com" required>
+          </div>
+        </div>
+        
+        <div class="form-group">
+          <label for="login-password">Password</label>
+          <div class="input-wrapper">
+            <i data-lucide="lock" class="input-icon"></i>
+            <input type="password" id="login-password" name="password" placeholder="••••••••" required>
+          </div>
+        </div>
+        
+        <button type="submit" class="btn btn-primary btn-full">
+          <span>Login</span>
+          <i data-lucide="log-in"></i>
+        </button>
+      </form>
+      
+      <div class="auth-footer">
+        <p>Don't have an account? <button class="link-btn" id="switch-to-register">Register</button></p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Register Modal -->
+  <div class="modal-overlay hidden" id="register-modal">
+    <div class="modal-card animate-scale-up auth-modal">
+      <div class="modal-header">
+        <h2>Create Account</h2>
+        <p>Join Farmers Consensus to start earning rewards</p>
+        <button class="modal-close-btn-icon" id="close-register-modal">
+          <i data-lucide="x"></i>
+        </button>
+      </div>
+      
+      <form id="register-form" class="auth-form">
+        <div class="form-group">
+          <label for="register-name">Full Name</label>
+          <div class="input-wrapper">
+            <i data-lucide="user" class="input-icon"></i>
+            <input type="text" id="register-name" name="fullName" placeholder="Juan Dela Cruz" required>
+          </div>
+        </div>
+        
+        <div class="form-group">
+          <label for="register-email">Email Address</label>
+          <div class="input-wrapper">
+            <i data-lucide="mail" class="input-icon"></i>
+            <input type="email" id="register-email" name="email" placeholder="you@example.com" required>
+          </div>
+        </div>
+        
+        <div class="form-group">
+          <label for="register-password">Password</label>
+          <div class="input-wrapper">
+            <i data-lucide="lock" class="input-icon"></i>
+            <input type="password" id="register-password" name="password" placeholder="••••••••" required>
+          </div>
+        </div>
+        
+        <div class="form-group">
+          <label for="register-usertype">I am a...</label>
+          <div class="input-wrapper">
+            <i data-lucide="users" class="input-icon"></i>
+            <select id="register-usertype" name="userType" required>
+              <option value="">Select your role</option>
+              <option value="farmer">Farmer</option>
+              <option value="buyer">Buyer</option>
+            </select>
+          </div>
+        </div>
+        
+        <div class="form-group">
+          <label for="register-registration-id">Registration ID (Optional)</label>
+          <div class="input-wrapper">
+            <i data-lucide="hash" class="input-icon"></i>
+            <input type="text" id="register-registration-id" name="registrationId" placeholder="FC-2026-XXXX">
+            <small>Link your existing registration to earn rewards</small>
+          </div>
+        </div>
+        
+        <button type="submit" class="btn btn-primary btn-full">
+          <span>Create Account</span>
+          <i data-lucide="user-plus"></i>
+        </button>
+      </form>
+      
+      <div class="auth-footer">
+        <p>Already have an account? <button class="link-btn" id="switch-to-login">Login</button></p>
+      </div>
+    </div>
+  </div>
+
+  <!-- User Profile Modal -->
+  <div class="modal-overlay hidden" id="profile-modal">
+    <div class="modal-card animate-scale-up profile-modal">
+      <div class="modal-header">
+        <h2>My Profile</h2>
+        <p>Manage your account and settings</p>
+        <button class="modal-close-btn-icon" id="close-profile-modal">
+          <i data-lucide="x"></i>
+        </button>
+      </div>
+      
+      <div class="profile-content">
+        <div class="profile-header">
+          <div class="profile-avatar">
+            <i data-lucide="user"></i>
+          </div>
+          <div class="profile-info">
+            <h3 class="profile-name" id="profile-name">Loading...</h3>
+            <p class="profile-email" id="profile-email">loading@example.com</p>
+            <span class="profile-role" id="profile-role">Farmer</span>
+          </div>
+        </div>
+        
+        <div class="profile-stats">
+          <div class="stat-card">
+            <div class="stat-icon">
+              <i data-lucide="wallet"></i>
+            </div>
+            <div class="stat-content">
+              <span class="stat-value user-balance">0 NCH</span>
+              <span class="stat-label">Current Balance</span>
+            </div>
+          </div>
+          
+          <div class="stat-card">
+            <div class="stat-icon">
+              <i data-lucide="gift"></i>
+            </div>
+            <div class="stat-content">
+              <span class="stat-value user-total-earned">0 NCH</span>
+              <span class="stat-label">Total Earned</span>
+            </div>
+          </div>
+          
+          <div class="stat-card">
+            <div class="stat-icon">
+              <i data-lucide="calendar"></i>
+            </div>
+            <div class="stat-content">
+              <span class="stat-value" id="profile-member-since">-</span>
+              <span class="stat-label">Member Since</span>
+            </div>
+          </div>
+        </div>
+        
+        <div class="profile-section">
+          <h4>NCH Token Value</h4>
+          <div class="token-price-display">
+            <div class="price-item">
+              <span class="price-label">USD</span>
+              <span class="price-value nch-price-usd">$0.0000</span>
+            </div>
+            <div class="price-item">
+              <span class="price-label">PHP</span>
+              <span class="price-value nch-price-php">₱0.00</span>
+            </div>
+            <div class="price-item">
+              <span class="price-label">Balance Value</span>
+              <span class="price-value">
+                <span class="balance-usd-value">$0.00</span> USD
+              </span>
+            </div>
+          </div>
+        </div>
+        
+        <div class="profile-section">
+          <h4>Wallet Address</h4>
+          <div class="wallet-display" id="wallet-address-display">
+            <span class="wallet-placeholder">No wallet connected</span>
+            <button class="btn btn-sm btn-outline" id="connect-wallet-btn">
+              <i data-lucide="link"></i>
+              <span>Connect Wallet</span>
+            </button>
+          </div>
+        </div>
+        
+        <div class="profile-section">
+          <h4>Recent Activity</h4>
+          <div class="activity-list" id="activity-list">
+            <p class="no-activity">No recent activity</p>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 

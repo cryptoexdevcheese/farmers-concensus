@@ -5,6 +5,8 @@ const path = require('path');
 const axios = require('axios');
 const session = require('express-session');
 const { Pool } = require('pg');
+const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -22,10 +24,45 @@ const BUYER_REGISTRATION_FEE = parseFloat(process.env.BUYER_REGISTRATION_FEE) ||
 const BUYER_PREMIUM_FEE = parseFloat(process.env.BUYER_PREMIUM_FEE) || 3.0; // NCH for buyer premium features
 const BUYER_MATCHING_FEE = parseFloat(process.env.BUYER_MATCHING_FEE) || 0.25; // NCH per successful farmer-buyer match
 
+// Token Price Configuration (mock prices, would connect to real price feeds in production)
+const TOKEN_PRICES = {
+    NCH: {
+        USD: 0.05,        // $0.05 per NCH
+        PHP: 2.80,       // ₱2.80 per NCH
+        EUR: 0.045,      // €0.045 per NCH
+        BTC: 0.0000008,  // ~0.0000008 BTC per NCH
+        ETH: 0.000015    // ~0.000015 ETH per NCH
+    },
+    updateInterval: 60000 // Update prices every 60 seconds
+};
+
+// Current token prices (will be updated periodically)
+let currentTokenPrices = { ...TOKEN_PRICES.NCH };
+
+// Function to update token prices (would connect to price APIs in production)
+function updateTokenPrices() {
+    // In production, this would fetch from price APIs like CoinGecko, CoinMarketCap, etc.
+    // For now, we'll use the mock prices with small random fluctuations to simulate live prices
+    
+    const fluctuation = 0.02; // 2% max fluctuation
+    
+    Object.keys(currentTokenPrices).forEach(currency => {
+        const randomChange = (Math.random() - 0.5) * fluctuation;
+        currentTokenPrices[currency] = TOKEN_PRICES.NCH[currency] * (1 + randomChange);
+    });
+}
+
+// Update prices periodically
+setInterval(updateTokenPrices, TOKEN_PRICES.updateInterval);
+
 // Admin Configuration
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'secure_password_change_this';
 const ADMIN_SESSION_SECRET = process.env.ADMIN_SESSION_SECRET || 'change_this_to_secure_random_string';
+
+// JWT Configuration for user authentication
+const JWT_SECRET = process.env.JWT_SECRET || 'change_this_to_secure_random_string_for_jwt';
+const JWT_EXPIRES_IN = '7d'; // Token expiration time
 
 // PostgreSQL Database Configuration
 let pool = null;
@@ -120,6 +157,50 @@ function requireAdmin(req, res, next) {
     } else {
         res.status(401).json({ success: false, error: 'Admin authentication required' });
     }
+}
+
+// JWT Authentication Middleware for regular users
+function requireAuth(req, res, next) {
+    const token = req.header('Authorization')?.replace('Bearer ', '');
+    
+    if (!token) {
+        return res.status(401).json({ success: false, error: 'No token provided' });
+    }
+    
+    try {
+        const decoded = jwt.verify(token, JWT_SECRET);
+        req.user = decoded;
+        next();
+    } catch (error) {
+        return res.status(401).json({ success: false, error: 'Invalid or expired token' });
+    }
+}
+
+// JWT Helper Functions
+function generateToken(userId, userType) {
+    return jwt.sign(
+        { userId, userType },
+        JWT_SECRET,
+        { expiresIn: JWT_EXPIRES_IN }
+    );
+}
+
+function verifyToken(token) {
+    try {
+        return jwt.verify(token, JWT_SECRET);
+    } catch (error) {
+        return null;
+    }
+}
+
+// Password Hashing Helper
+async function hashPassword(password) {
+    const saltRounds = 10;
+    return await bcrypt.hash(password, saltRounds);
+}
+
+async function verifyPassword(password, hash) {
+    return await bcrypt.compare(password, hash);
 }
 
 // In-memory fallback for revenue tracking (used if database fails)
@@ -636,6 +717,741 @@ app.get('/api/admin/check', (req, res) => {
         success: true, 
         isAdmin: !!req.session.isAdmin 
     });
+});
+
+// ===== USER AUTHENTICATION ENDPOINTS =====
+
+// User Registration
+app.post('/api/auth/register', async (req, res) => {
+    try {
+        const { email, password, fullName, userType, registrationId } = req.body;
+        
+        // Validate input
+        if (!email || !password || !fullName || !userType) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Missing required fields' 
+            });
+        }
+        
+        if (!['farmer', 'buyer'].includes(userType)) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Invalid user type' 
+            });
+        }
+        
+        // Check if email already exists
+        const existingUser = await safeQuery(
+            'SELECT id FROM users WHERE email = $1',
+            [email.toLowerCase()]
+        );
+        
+        if (existingUser && existingUser.rows.length > 0) {
+            return res.status(409).json({ 
+                success: false, 
+                error: 'Email already registered' 
+            });
+        }
+        
+        // Hash password
+        const passwordHash = await hashPassword(password);
+        
+        // Create user account
+        const result = await safeQuery(
+            `INSERT INTO users (email, password_hash, full_name, user_type, registration_id, wallet_address)
+             VALUES ($1, $2, $3, $4, $5, $6)
+             RETURNING id, email, full_name, user_type, created_at`,
+            [email.toLowerCase(), passwordHash, fullName, userType, registrationId || null, null]
+        );
+        
+        if (result && result.rows[0]) {
+            const newUser = result.rows[0];
+            
+            // Initialize NCH balance for new user
+            await safeQuery(
+                `INSERT INTO user_balances (user_id, token_symbol, balance, total_earned)
+                 VALUES ($1, 'NCH', 0, 0)`,
+                [newUser.id]
+            );
+            
+            // Give registration reward if it's a farmer or buyer
+            if (registrationId) {
+                const rewardAmount = userType === 'farmer' ? REGISTRATION_REWARD : REGISTRATION_REWARD;
+                
+                await safeQuery(
+                    `INSERT INTO user_rewards (user_id, reward_type, reward_amount, reward_token, description)
+                     VALUES ($1, 'registration', $2, 'NCH', 'Welcome bonus for joining Farmers Consensus')`,
+                    [newUser.id, rewardAmount]
+                );
+                
+                // Update user balance with reward
+                await safeQuery(
+                    `UPDATE user_balances 
+                     SET balance = balance + $1, total_earned = total_earned + $1,
+                     last_updated = CURRENT_TIMESTAMP
+                     WHERE user_id = $2`,
+                    [rewardAmount, newUser.id]
+                );
+            }
+            
+            // Generate JWT token
+            const token = generateToken(newUser.id, newUser.user_type);
+            
+            res.status(201).json({
+                success: true,
+                message: 'Registration successful',
+                user: {
+                    id: newUser.id,
+                    email: newUser.email,
+                    fullName: newUser.fullName,
+                    userType: newUser.user_type
+                },
+                token
+            });
+        } else {
+            // Fallback for in-memory mode
+            res.status(201).json({
+                success: true,
+                message: 'Registration successful (in-memory mode)',
+                user: {
+                    id: Date.now(),
+                    email: email,
+                    fullName,
+                    userType
+                },
+                token: 'mock_token_' + Date.now()
+            });
+        }
+    } catch (error) {
+        console.error('Registration error:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: 'Registration failed' 
+        });
+    }
+});
+
+// User Login
+app.post('/api/auth/login', async (req, res) => {
+    try {
+        const { email, password } = req.body;
+        
+        if (!email || !password) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Email and password required' 
+            });
+        }
+        
+        // Find user by email
+        const result = await safeQuery(
+            'SELECT * FROM users WHERE email = $1 AND is_active = true',
+            [email.toLowerCase()]
+        );
+        
+        if (result && result.rows.length > 0) {
+            const user = result.rows[0];
+            
+            // Verify password
+            const isValidPassword = await verifyPassword(password, user.password_hash);
+            
+            if (isValidPassword) {
+                // Log user activity
+                await safeQuery(
+                    `INSERT INTO user_activity (user_id, activity_type, activity_description, ip_address)
+                     VALUES ($1, 'login', 'User logged in', $2)`,
+                    [user.id, req.ip]
+                );
+                
+                // Generate JWT token
+                const token = generateToken(user.id, user.user_type);
+                
+                res.json({
+                    success: true,
+                    message: 'Login successful',
+                    user: {
+                        id: user.id,
+                        email: user.email,
+                        fullName: user.full_name,
+                        userType: user.user_type,
+                        walletAddress: user.wallet_address
+                    },
+                    token
+                });
+            } else {
+                res.status(401).json({ 
+                    success: false, 
+                    error: 'Invalid credentials' 
+                });
+            }
+        } else {
+            res.status(401).json({ 
+                success: false, 
+                error: 'User not found' 
+            });
+        }
+    } catch (error) {
+        console.error('Login error:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: 'Login failed' 
+        });
+    }
+});
+
+// Get User Profile
+app.get('/api/user/profile', requireAuth, async (req, res) => {
+    try {
+        const userId = req.user.userId;
+        
+        const userResult = await safeQuery(
+            'SELECT id, email, full_name, user_type, wallet_address, created_at FROM users WHERE id = $1',
+            [userId]
+        );
+        
+        if (userResult && userResult.rows.length > 0) {
+            const user = userResult.rows[0];
+            
+            // Get user's NCH balance
+            const balanceResult = await safeQuery(
+                'SELECT balance, total_earned, frozen_balance FROM user_balances WHERE user_id = $1 AND token_symbol = $2',
+                [userId, 'NCH']
+            );
+            
+            const nchBalance = balanceResult && balanceResult.rows.length > 0 ? balanceResult.rows[0] : {
+                balance: 0,
+                total_earned: 0,
+                frozen_balance: 0
+            };
+            
+            // Get user's recent rewards
+            const rewardsResult = await safeQuery(
+                `SELECT reward_type, reward_amount, reward_token, description, created_at, is_claimed
+                 FROM user_rewards 
+                 WHERE user_id = $1 
+                 ORDER BY created_at DESC 
+                 LIMIT 10`,
+                [userId]
+            );
+            
+            res.json({
+                success: true,
+                user: {
+                    ...user,
+                    nchBalance: nchBalance.balance,
+                    totalEarned: nchBalance.total_earned,
+                    frozenBalance: nchBalance.frozen_balance
+                },
+                recentRewards: rewardsResult ? rewardsResult.rows : []
+            });
+        } else {
+            res.status(404).json({ 
+                success: false, 
+                error: 'User not found' 
+            });
+        }
+    } catch (error) {
+        console.error('Profile fetch error:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: 'Failed to fetch profile' 
+        });
+    }
+});
+
+// Update User Profile
+app.put('/api/user/profile', requireAuth, async (req, res) => {
+    try {
+        const userId = req.user.userId;
+        const { fullName, walletAddress } = req.body;
+        
+        const updateFields = [];
+        const values = [];
+        const paramCount = [];
+        
+        if (fullName) {
+            updateFields.push('full_name = $1');
+            values.push(fullName);
+            paramCount.push(++paramCount.length);
+        }
+        
+        if (walletAddress) {
+            updateFields.push('wallet_address = $1');
+            values.push(walletAddress);
+            paramCount.push(++paramCount.length);
+        }
+        
+        if (updateFields.length === 0) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'No fields to update' 
+            });
+        }
+        
+        values.push(userId);
+        
+        const result = await safeQuery(
+            `UPDATE users SET ${updateFields.join(', ')} WHERE id = $${paramCount.length} RETURNING *`,
+            values
+        );
+        
+        if (result && result.rows.length > 0) {
+            res.json({
+                success: true,
+                message: 'Profile updated successfully',
+                user: result.rows[0]
+            });
+        } else {
+            res.status(404).json({ 
+                success: false, 
+                error: 'User not found' 
+            });
+        }
+    } catch (error) {
+        console.error('Profile update error:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: 'Failed to update profile' 
+        });
+    }
+});
+
+// Get User Balance
+app.get('/api/user/balance', requireAuth, async (req, res) => {
+    try {
+        const userId = req.user.userId;
+        
+        const result = await safeQuery(
+            'SELECT token_symbol, balance, total_earned, frozen_balance FROM user_balances WHERE user_id = $1',
+            [userId]
+        );
+        
+        res.json({
+            success: true,
+            balances: result ? result.rows : []
+        });
+    } catch (error) {
+        console.error('Balance fetch error:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: 'Failed to fetch balance' 
+        });
+    }
+});
+
+// Claim Rewards
+app.post('/api/user/rewards/claim', requireAuth, async (req, res) => {
+    try {
+        const userId = req.user.userId;
+        const { rewardId } = req.body;
+        
+        // Get reward details
+        const rewardResult = await safeQuery(
+            'SELECT * FROM user_rewards WHERE id = $1 AND user_id = $2 AND is_claimed = false',
+            [rewardId, userId]
+        );
+        
+        if (rewardResult && rewardResult.rows.length > 0) {
+            const reward = rewardResult.rows[0];
+            
+            // Mark as claimed
+            await safeQuery(
+                'UPDATE user_rewards SET is_claimed = true, claimed_at = CURRENT_TIMESTAMP WHERE id = $1',
+                [rewardId]
+            );
+            
+            // Add to user balance
+            await safeQuery(
+                `UPDATE user_balances 
+                 SET balance = balance + $1, total_earned = total_earned + $1,
+                 last_updated = CURRENT_TIMESTAMP 
+                 WHERE user_id = $2 AND token_symbol = $3`,
+                [reward.reward_amount, userId, reward.reward_token]
+            );
+            
+            res.json({
+                success: true,
+                message: 'Reward claimed successfully',
+                claimedAmount: reward.reward_amount,
+                token: reward.reward_token
+            });
+        } else {
+            res.status(404).json({ 
+                success: false, 
+                error: 'Reward not found or already claimed' 
+            });
+        }
+    } catch (error) {
+        console.error('Reward claim error:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: 'Failed to claim reward' 
+        });
+    }
+});
+
+// User Logout
+app.post('/api/auth/logout', requireAuth, async (req, res) => {
+    try {
+        const userId = req.user.userId;
+        
+        // Log logout activity
+        await safeQuery(
+            `INSERT INTO user_activity (user_id, activity_type, activity_description, ip_address)
+             VALUES ($1, 'logout', 'User logged out', $2)`,
+            [userId, req.ip]
+        );
+        
+        res.json({
+            success: true,
+            message: 'Logged out successfully'
+        });
+    } catch (error) {
+        console.error('Logout error:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: 'Logout failed' 
+        });
+    }
+});
+
+// Get User Activity History
+app.get('/api/user/activity', requireAuth, async (req, res) => {
+    try {
+        const userId = req.user.userId;
+        const limit = parseInt(req.query.limit) || 20;
+        
+        const result = await safeQuery(
+            `SELECT activity_type, activity_description, created_at 
+             FROM user_activity 
+             WHERE user_id = $1 
+             ORDER BY created_at DESC 
+             LIMIT $2`,
+            [userId, limit]
+        );
+        
+        res.json({
+            success: true,
+            activities: result ? result.rows : []
+        });
+    } catch (error) {
+        console.error('Activity fetch error:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: 'Failed to fetch activity' 
+        });
+    }
+});
+
+// ===== REWARDS SYSTEM ENDPOINTS =====
+
+// Reward Configuration
+const REWARD_CONFIG = {
+    registration: REGISTRATION_REWARD,
+    first_crop_registration: 5,
+    referral_bonus: 15,
+    weekly_activity_bonus: 2,
+    milestone_rewards: {
+        first_5_crops: 10,
+        first_10_crops: 25,
+        first_20_crops: 50,
+        first_50_crops: 100
+    },
+    seasonal_bonus: 20,
+    verification_bonus: 3
+};
+
+// Grant reward to user
+async function grantReward(userId, rewardType, rewardAmount, token, description) {
+    try {
+        await safeQuery(
+            `INSERT INTO user_rewards (user_id, reward_type, reward_amount, reward_token, description)
+             VALUES ($1, $2, $3, $4, $5)`,
+            [userId, rewardType, rewardAmount, token, description]
+        );
+        
+        // Update user balance
+        await safeQuery(
+            `UPDATE user_balances 
+             SET balance = balance + $1, total_earned = total_earned + $1,
+             last_updated = CURRENT_TIMESTAMP 
+             WHERE user_id = $2 AND token_symbol = $3`,
+            [rewardAmount, userId, token]
+        );
+        
+        // Log reward activity
+        await safeQuery(
+            `INSERT INTO user_activity (user_id, activity_type, activity_description, ip_address)
+             VALUES ($1, 'reward', 'Received reward: ' + $2, $3)`,
+            [userId, description, '127.0.0.1']
+        );
+        
+        return true;
+    } catch (error) {
+        console.error('Error granting reward:', error);
+        return false;
+    }
+}
+
+// Get available rewards for user
+app.get('/api/user/rewards', requireAuth, async (req, res) => {
+    try {
+        const userId = req.user.userId;
+        
+        const result = await safeQuery(
+            `SELECT id, reward_type, reward_amount, reward_token, description, created_at, is_claimed
+             FROM user_rewards 
+             WHERE user_id = $1 
+             ORDER BY created_at DESC`,
+            [userId]
+        );
+        
+        res.json({
+            success: true,
+            rewards: result ? result.rows : []
+        });
+    } catch (error) {
+        console.error('Rewards fetch error:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: 'Failed to fetch rewards' 
+        });
+    }
+});
+
+// Get reward statistics
+app.get('/api/user/rewards/stats', requireAuth, async (req, res) => {
+    try {
+        const userId = req.user.userId;
+        
+        // Get total rewards earned
+        const totalResult = await safeQuery(
+            `SELECT COALESCE(SUM(reward_amount), 0) as total_rewards
+             FROM user_rewards 
+             WHERE user_id = $1`,
+            [userId]
+        );
+        
+        // Get claimed vs unclaimed
+        const claimedResult = await safeQuery(
+            `SELECT 
+                COALESCE(SUM(CASE WHEN is_claimed = true THEN reward_amount ELSE 0 END), 0) as claimed,
+                COALESCE(SUM(CASE WHEN is_claimed = false THEN reward_amount ELSE 0 END), 0) as unclaimed
+             FROM user_rewards 
+             WHERE user_id = $1`,
+            [userId]
+        );
+        
+        // Get reward breakdown by type
+        const breakdownResult = await safeQuery(
+            `SELECT reward_type, COUNT(*) as count, SUM(reward_amount) as total
+             FROM user_rewards 
+             WHERE user_id = $1 
+             GROUP BY reward_type 
+             ORDER BY total DESC`,
+            [userId]
+        );
+        
+        res.json({
+            success: true,
+            stats: {
+                totalRewards: totalResult?.rows[0]?.total_rewards || 0,
+                claimed: claimedResult?.rows[0]?.claimed || 0,
+                unclaimed: claimedResult?.rows[0]?.unclaimed || 0,
+                breakdown: breakdownResult?.rows || []
+            }
+        });
+    } catch (error) {
+        console.error('Reward stats error:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: 'Failed to fetch reward statistics' 
+        });
+    }
+});
+
+// Trigger milestone reward
+app.post('/api/user/rewards/milestone', requireAuth, async (req, res) => {
+    try {
+        const userId = req.user.userId;
+        const { milestoneType } = req.body;
+        
+        if (!REWARD_CONFIG.milestone_rewards[milestoneType]) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Invalid milestone type' 
+            });
+        }
+        
+        // Check if milestone already achieved
+        const existingReward = await safeQuery(
+            `SELECT id FROM user_rewards 
+             WHERE user_id = $1 AND reward_type = $2`,
+            [userId, milestoneType]
+        );
+        
+        if (existingReward && existingReward.rows.length > 0) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Milestone already claimed' 
+            });
+        }
+        
+        const rewardAmount = REWARD_CONFIG.milestone_rewards[milestoneType];
+        const description = `Milestone achieved: ${milestoneType.replace(/_/g, ' ')}`;
+        
+        const granted = await grantReward(userId, milestoneType, rewardAmount, 'NCH', description);
+        
+        if (granted) {
+            res.json({
+                success: true,
+                message: 'Milestone reward granted successfully',
+                rewardAmount,
+                rewardType: milestoneType
+            });
+        } else {
+            res.status(500).json({ 
+                success: false, 
+                error: 'Failed to grant milestone reward' 
+            });
+        }
+    } catch (error) {
+        console.error('Milestone reward error:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: 'Failed to process milestone reward' 
+        });
+    }
+});
+
+// Leaderboard endpoint
+app.get('/api/rewards/leaderboard', async (req, res) => {
+    try {
+        const limit = parseInt(req.query.limit) || 10;
+        
+        const result = await safeQuery(
+            `SELECT u.id, u.full_name, u.user_type, COALESCE(SUM(ur.reward_amount), 0) as total_rewards
+             FROM users u
+             LEFT JOIN user_rewards ur ON u.id = ur.user_id
+             WHERE u.is_active = true
+             GROUP BY u.id, u.full_name, u.user_type
+             ORDER BY total_rewards DESC
+             LIMIT $1`,
+            [limit]
+        );
+        
+        res.json({
+            success: true,
+            leaderboard: result ? result.rows : []
+        });
+    } catch (error) {
+        console.error('Leaderboard error:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: 'Failed to fetch leaderboard' 
+        });
+    }
+});
+
+// ===== TOKEN PRICE ENDPOINTS =====
+
+// Get current token prices
+app.get('/api/tokens/prices', async (req, res) => {
+    try {
+        // Update prices before returning
+        updateTokenPrices();
+        
+        res.json({
+            success: true,
+            token: 'NCH',
+            prices: currentTokenPrices,
+            lastUpdated: new Date().toISOString()
+        });
+    } catch (error) {
+        console.error('Price fetch error:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: 'Failed to fetch token prices' 
+        });
+    }
+});
+
+// Convert NCH to other currencies
+app.get('/api/tokens/convert', async (req, res) => {
+    try {
+        const { amount, from = 'NCH', to = 'USD' } = req.query;
+        
+        if (!amount || isNaN(amount)) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Invalid amount' 
+            });
+        }
+        
+        const nchAmount = from.toUpperCase() === 'NCH' ? parseFloat(amount) : parseFloat(amount) / currentTokenPrices[from.toUpperCase()];
+        const convertedAmount = nchAmount * (currentTokenPrices[to.toUpperCase()] || 0);
+        
+        res.json({
+            success: true,
+            from: { amount: parseFloat(amount), currency: from.toUpperCase() },
+            to: { amount: convertedAmount, currency: to.toUpperCase() },
+            rate: currentTokenPrices[to.toUpperCase()] || 0,
+            nchAmount
+        });
+    } catch (error) {
+        console.error('Conversion error:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: 'Failed to convert tokens' 
+        });
+    }
+});
+
+// Get token price history (mock data)
+app.get('/api/tokens/history', async (req, res) => {
+    try {
+        const { timeframe = '24h', currency = 'USD' } = req.query;
+        
+        // Generate mock price history based on timeframe
+        const points = timeframe === '24h' ? 24 : timeframe === '7d' ? 7 : 30;
+        const history = [];
+        
+        for (let i = points; i >= 0; i--) {
+            const date = new Date();
+            if (timeframe === '24h') {
+                date.setHours(date.getHours() - i);
+            } else if (timeframe === '7d') {
+                date.setDate(date.getDate() - i);
+            } else {
+                date.setDate(date.getDate() - i);
+            }
+            
+            const basePrice = currentTokenPrices[currency.toUpperCase()] || TOKEN_PRICES.NCH[currency.toUpperCase()];
+            const randomChange = (Math.random() - 0.5) * 0.1; // 5% variation
+            const price = basePrice * (1 + randomChange);
+            
+            history.push({
+                timestamp: date.toISOString(),
+                price: price,
+                currency: currency.toUpperCase()
+            });
+        }
+        
+        res.json({
+            success: true,
+            token: 'NCH',
+            timeframe,
+            currency: currency.toUpperCase(),
+            history
+        });
+    } catch (error) {
+        console.error('Price history error:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: 'Failed to fetch price history' 
+        });
+    }
 });
 
 // Revenue Analytics Endpoint (Admin Only)
