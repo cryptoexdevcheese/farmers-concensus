@@ -160,11 +160,8 @@ async function initializeDatabaseSchema() {
         if (fs.existsSync(schemaPath)) {
             const schema = fs.readFileSync(schemaPath, 'utf8');
             
-            // Split schema by semicolons and execute each statement
-            const statements = schema
-                .split(';')
-                .map(stmt => stmt.trim())
-                .filter(stmt => stmt.length > 0 && !stmt.startsWith('--'));
+            // Split schema into statements, preserving PL/pgSQL function bodies
+            const statements = splitSQLStatements(schema);
             
             for (const statement of statements) {
                 if (statement.trim()) {
@@ -196,6 +193,107 @@ async function initializeDatabaseSchema() {
         console.warn('⚠️ Continuing without schema initialization');
         return false;
     }
+}
+
+// Helper function to split SQL statements while preserving PL/pgSQL function bodies
+function splitSQLStatements(sql) {
+    const statements = [];
+    let currentStatement = '';
+    let inDollarQuote = false;
+    let inSingleQuote = false;
+    let inDoubleQuote = false;
+    let inComment = false;
+    let inBlockComment = false;
+    
+    for (let i = 0; i < sql.length; i++) {
+        const char = sql[i];
+        const nextChar = sql[i + 1] || '';
+        
+        // Handle block comments (/* */)
+        if (!inComment && !inBlockComment && !inDollarQuote && !inSingleQuote && !inDoubleQuote) {
+            if (char === '/' && nextChar === '*') {
+                inBlockComment = true;
+                currentStatement += char + nextChar;
+                i++;
+                continue;
+            }
+        }
+        
+        if (inBlockComment) {
+            currentStatement += char;
+            if (char === '*' && nextChar === '/') {
+                inBlockComment = false;
+                currentStatement += nextChar;
+                i++;
+            }
+            continue;
+        }
+        
+        // Handle line comments (--)
+        if (!inBlockComment && !inComment && !inDollarQuote && !inSingleQuote && !inDoubleQuote) {
+            if (char === '-' && nextChar === '-') {
+                inComment = true;
+                currentStatement += char + nextChar;
+                i++;
+                continue;
+            }
+        }
+        
+        if (inComment) {
+            currentStatement += char;
+            if (char === '\n') {
+                inComment = false;
+            }
+            continue;
+        }
+        
+        // Handle dollar quotes for PL/pgSQL functions ($$)
+        if (!inSingleQuote && !inDoubleQuote && !inBlockComment && !inComment) {
+            if (char === '$' && nextChar === '$') {
+                inDollarQuote = !inDollarQuote;
+                currentStatement += char + nextChar;
+                i++;
+                continue;
+            }
+        }
+        
+        // Handle single quotes
+        if (!inDollarQuote && !inDoubleQuote && !inBlockComment && !inComment) {
+            if (char === "'") {
+                inSingleQuote = !inSingleQuote;
+                currentStatement += char;
+                continue;
+            }
+        }
+        
+        // Handle double quotes
+        if (!inDollarQuote && !inSingleQuote && !inBlockComment && !inComment) {
+            if (char === '"') {
+                inDoubleQuote = !inDoubleQuote;
+                currentStatement += char;
+                continue;
+            }
+        }
+        
+        // Add character to current statement
+        currentStatement += char;
+        
+        // Split on semicolon only if not in quotes or dollar quotes
+        if (char === ';' && !inDollarQuote && !inSingleQuote && !inDoubleQuote && !inComment && !inBlockComment) {
+            const trimmedStatement = currentStatement.trim();
+            if (trimmedStatement.length > 0 && !trimmedStatement.startsWith('--')) {
+                statements.push(trimmedStatement);
+            }
+            currentStatement = '';
+        }
+    }
+    
+    // Add any remaining statement
+    if (currentStatement.trim().length > 0 && !currentStatement.trim().startsWith('--')) {
+        statements.push(currentStatement.trim());
+    }
+    
+    return statements;
 }
 
 // Complete database initialization (blocking for production)
