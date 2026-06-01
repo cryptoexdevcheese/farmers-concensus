@@ -394,27 +394,33 @@ app.post('/api/farmers/register', async (req, res) => {
         if (pool) {
             try {
                 await pool.query(
-                    `INSERT INTO farmers 
-                    (name, province, vegetable_id, premium_tier, blockchain_txid, registration_date, 
-                     crop_size, soil_type, irrigation_type, harvest_date, farm_coordinates, metadata)
-                    VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP, $6, $7, $8, $9, $10, $11)`,
+                    `INSERT INTO farmers_registrations
+                    (farmer_id, farmer_name, contact, province, municipality, barangay,
+                     vegetable_id, area_sqm, area_ha, expected_yield_tons,
+                     planting_date, harvest_date, blockchain_transaction_id, blockchain_hash, premium_tier)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+                    ON CONFLICT (farmer_id) DO NOTHING`,
                     [
+                        registrationData.id || `FC-${Date.now()}`,
                         registrationData.farmerName,
+                        registrationData.contact || '',
                         registrationData.province,
+                        registrationData.municipality || '',
+                        registrationData.barangay || '',
                         registrationData.vegetableId,
-                        isPremium,
-                        blockchainResult.txid,
-                        registrationData.cropSize || null,
-                        registrationData.soilType || null,
-                        registrationData.irrigationType || null,
+                        registrationData.areaSqm || 0,
+                        registrationData.areaHa || 0,
+                        registrationData.expectedYieldTons || 0,
+                        registrationData.plantingDate || null,
                         registrationData.harvestDate || null,
-                        registrationData.farmCoordinates || null,
-                        JSON.stringify(registrationData)
+                        blockchainResult.txid || null,
+                        blockchainResult.hash || null,
+                        isPremium
                     ]
                 );
-                console.log('Farmer saved to database:', registrationData.farmerName);
+                console.log('✅ Farmer saved to database:', registrationData.farmerName);
             } catch (dbError) {
-                console.error('Failed to save farmer to database:', dbError);
+                console.error('❌ Failed to save farmer to database:', dbError.message);
                 // Continue with registration even if database save fails
             }
         } else {
@@ -665,6 +671,34 @@ app.get('/api/blockchain/status', async (req, res) => {
 });
 
 // Get registration statistics (from blockchain)
+// GET all farmer registrations (for frontend hydration from DB)
+app.get('/api/farmers/registrations', async (req, res) => {
+    try {
+        const result = await safeQuery(
+            `SELECT farmer_id as id, farmer_name as "farmerName", contact, province,
+                    municipality, barangay, vegetable_id as "vegetableId",
+                    area_sqm as "areaSqm", area_ha as "areaHa",
+                    expected_yield_tons as "expectedYieldTons",
+                    planting_date as "plantingDate", harvest_date as "harvestDate",
+                    registration_timestamp as timestamp,
+                    blockchain_transaction_id as "blockchainTxId"
+             FROM farmers_registrations
+             ORDER BY registration_timestamp DESC
+             LIMIT 500`,
+            []
+        );
+
+        res.json({
+            success: true,
+            registrations: result ? result.rows : [],
+            count: result ? result.rows.length : 0
+        });
+    } catch (error) {
+        console.error('Failed to fetch registrations:', error);
+        res.status(500).json({ success: false, error: 'Failed to fetch registrations' });
+    }
+});
+
 app.get('/api/farmers/statistics', async (req, res) => {
     try {
         // This would query the blockchain for all crop registration transactions

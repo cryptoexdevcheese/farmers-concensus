@@ -34,6 +34,12 @@ const app = {
     // Blockchain Integration
     this.checkBlockchainStatus();
     this.initBuyerRegistration();
+
+    // NCH Live Price Ticker
+    this.initNCHPriceTicker();
+
+    // Hydrate from database (overrides/merges with localStorage)
+    this.hydrateFromDatabase();
     
     // Mobile Enhancements
     this.initMobileEnhancements();
@@ -51,6 +57,96 @@ const app = {
     const today = new Date();
     today.setDate(today.getDate() + 7);
     document.getElementById("planting-date").value = today.toISOString().split("T")[0];
+  },
+
+  // ─── NCH Live Price Ticker ───────────────────────────────────────────────
+  async initNCHPriceTicker() {
+    // Previous prices for change calculation
+    this._prevPrices = {};
+    await this.fetchAndDisplayNCHPrices();
+    // Refresh every 60 seconds
+    setInterval(() => this.fetchAndDisplayNCHPrices(), 60000);
+  },
+
+  async fetchAndDisplayNCHPrices() {
+    try {
+      const res = await fetch('/api/tokens/prices');
+      if (!res.ok) return;
+      const data = await res.json();
+      if (!data.success || !data.prices) return;
+
+      const prices = data.prices;
+      const fmt = {
+        USD: { symbol: '$', decimals: 4 },
+        PHP: { symbol: '₱', decimals: 2 },
+        EUR: { symbol: '€', decimals: 4 }
+      };
+
+      Object.entries(fmt).forEach(([currency, { symbol, decimals }]) => {
+        const val = prices[currency];
+        if (val == null) return;
+
+        const valEl   = document.getElementById(`nch-price-${currency.toLowerCase()}`);
+        const chgEl   = document.getElementById(`nch-change-${currency.toLowerCase()}`);
+        if (!valEl || !chgEl) return;
+
+        valEl.textContent = `${symbol}${val.toFixed(decimals)}`;
+
+        // Calculate % change from previous fetch
+        const prev = this._prevPrices[currency];
+        if (prev != null && prev !== 0) {
+          const pct = ((val - prev) / prev) * 100;
+          const sign = pct >= 0 ? '+' : '';
+          chgEl.textContent = `${sign}${pct.toFixed(2)}%`;
+          chgEl.className = `ticker-change ${pct >= 0 ? 'positive' : 'negative'}`;
+        }
+
+        this._prevPrices[currency] = val;
+      });
+
+      this.initLucide();
+    } catch (e) {
+      console.warn('NCH price fetch error:', e.message);
+    }
+  },
+
+  // ─── DB Hydration: Fetch persistent records from server ──────────────────
+  async hydrateFromDatabase() {
+    try {
+      const res = await fetch('/api/farmers/registrations');
+      if (!res.ok) return;
+      const data = await res.json();
+      if (!data.success || !data.registrations || data.registrations.length === 0) return;
+
+      // Convert date fields to strings (may arrive as Date objects)
+      const dbRecords = data.registrations.map(r => ({
+        ...r,
+        plantingDate: r.plantingDate ? String(r.plantingDate).substring(0, 10) : '',
+        harvestDate:  r.harvestDate  ? String(r.harvestDate).substring(0, 10)  : '',
+        areaSqm:         parseFloat(r.areaSqm) || 0,
+        areaHa:          parseFloat(r.areaHa)  || 0,
+        expectedYieldTons: parseFloat(r.expectedYieldTons) || 0,
+      }));
+
+      // Merge: DB is the source of truth; only add local records not yet in DB
+      const dbIds = new Set(dbRecords.map(r => r.id));
+      const localOnly = this.registrations.filter(r => !dbIds.has(r.id));
+      this.registrations = [...dbRecords, ...localOnly];
+
+      // Persist merged list to localStorage
+      localStorage.setItem("farmers_consensus_data", JSON.stringify(this.registrations));
+
+      // Re-render UI with full dataset
+      this.updateDashboardMetrics();
+      if (this.charts.cropShare) {
+        this.updateCharts();
+      }
+      this.renderLedgerTable();
+      this.populateFilterDropdowns();
+      console.log(`✅ Hydrated ${dbRecords.length} registrations from database`);
+    } catch (e) {
+      console.warn('DB hydration error:', e.message);
+    }
   },
 
   // Load state from local storage or data.js
