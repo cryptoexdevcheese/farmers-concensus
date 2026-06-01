@@ -66,75 +66,182 @@ const JWT_EXPIRES_IN = '7d'; // Token expiration time
 
 // PostgreSQL Database Configuration
 let pool = null;
-try {
+let databaseAvailable = false;
+
+async function initializeDatabasePool() {
     if (process.env.DATABASE_URL) {
-        pool = new Pool({
-            connectionString: process.env.DATABASE_URL,
-            ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-            max: 20, // Maximum number of clients in the pool
-            idleTimeoutMillis: 30000, // Close idle clients after 30 seconds
-            connectionTimeoutMillis: 2000, // Return an error after 2 seconds if connection could not be established
-        });
+        try {
+            pool = new Pool({
+                connectionString: process.env.DATABASE_URL,
+                ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+                max: 20, // Maximum number of clients in the pool
+                idleTimeoutMillis: 30000, // Close idle clients after 30 seconds
+                connectionTimeoutMillis: 10000, // Increased to 10 seconds for Railway cold starts
+            });
+            
+            // Test connection immediately
+            await pool.query('SELECT NOW()');
+            databaseAvailable = true;
+            console.log('✅ Database pool created and connected successfully');
+            return true;
+        } catch (error) {
+            console.error('❌ Failed to create database pool:', error.message);
+            pool = null;
+            databaseAvailable = false;
+            
+            // In production, fail hard if database is not available
+            if (process.env.NODE_ENV === 'production') {
+                console.error('❌ CRITICAL: Database connection failed in production mode');
+                console.error('❌ Application cannot start without database in production');
+                throw new Error('Database connection required in production');
+            }
+            
+            console.warn('⚠️ DATABASE_URL set but connection failed, running in in-memory mode');
+            return false;
+        }
     } else {
-        console.warn('⚠️ DATABASE_URL not set, running in in-memory mode');
+        console.warn('⚠️ DATABASE_URL not set');
+        
+        // In production, fail hard if DATABASE_URL is not set
+        if (process.env.NODE_ENV === 'production') {
+            console.error('❌ CRITICAL: DATABASE_URL not set in production mode');
+            console.error('❌ Application cannot start without DATABASE_URL in production');
+            throw new Error('DATABASE_URL required in production');
+        }
+        
+        console.warn('⚠️ Running in in-memory mode (development only)');
+        return false;
     }
-} catch (error) {
-    console.error('Failed to create database pool:', error);
-    console.warn('⚠️ Running in in-memory mode');
 }
 
-// Safe database query helper
+// Critical database query helper (fails hard in production if database unavailable)
 async function safeQuery(text, params) {
-    if (!pool) {
-        console.warn('⚠️ Database not available, skipping query');
+    if (!pool || !databaseAvailable) {
+        const errorMsg = 'Database not available';
+        console.error('❌', errorMsg);
+        
+        if (process.env.NODE_ENV === 'production') {
+            throw new Error(`${errorMsg} - Query cannot be executed: ${text.substring(0, 50)}...`);
+        }
+        
+        console.warn('⚠️ Returning null for query in development mode');
         return null;
-    }
-    try {
-        return await pool.query(text, params);
-    } catch (error) {
-        console.error('Database query error:', error);
-        return null;
-    }
-}
-
-// Database connection helper
-async function initializeDatabase() {
-    if (!pool) {
-        console.warn('⚠️ No database pool available, skipping database initialization');
-        return;
     }
     
     try {
-        // Test connection
-        await pool.query('SELECT NOW()');
-        console.log('✅ Database connected successfully');
-        
-        // Run schema if table doesn't exist
-        try {
-            const fs = require('fs');
-            const schemaPath = path.join(__dirname, 'schema.sql');
-            if (fs.existsSync(schemaPath)) {
-                const schema = fs.readFileSync(schemaPath, 'utf8');
-                await pool.query(schema);
-                console.log('✅ Database schema initialized');
-            } else {
-                console.warn('⚠️ schema.sql not found, skipping schema initialization');
-            }
-        } catch (schemaError) {
-            console.error('Schema initialization error:', schemaError);
-            // Continue even if schema fails
-        }
+        const result = await pool.query(text, params);
+        return result;
     } catch (error) {
-        console.error('Database initialization error:', error);
-        console.warn('⚠️ Continuing without database connection');
-        // Continue without database if connection fails
+        console.error('❌ Database query error:', error.message);
+        console.error('❌ Query:', text.substring(0, 100));
+        
+        if (process.env.NODE_ENV === 'production') {
+            // In production, log the full error but don't crash for individual queries
+            console.error('❌ Full error details:', error);
+        }
+        
+        throw error; // Re-throw to let caller handle it
     }
 }
 
-// Initialize database on startup (non-blocking)
-initializeDatabase().catch(err => {
-    console.error('Database initialization failed:', err);
-});
+// Database schema initialization
+async function initializeDatabaseSchema() {
+    if (!pool || !databaseAvailable) {
+        console.warn('⚠️ Database not available, skipping schema initialization');
+        return false;
+    }
+    
+    try {
+        console.log('🔄 Initializing database schema...');
+        
+        const fs = require('fs');
+        const schemaPath = path.join(__dirname, 'schema.sql');
+        
+        if (fs.existsSync(schemaPath)) {
+            const schema = fs.readFileSync(schemaPath, 'utf8');
+            
+            // Split schema by semicolons and execute each statement
+            const statements = schema
+                .split(';')
+                .map(stmt => stmt.trim())
+                .filter(stmt => stmt.length > 0 && !stmt.startsWith('--'));
+            
+            for (const statement of statements) {
+                if (statement.trim()) {
+                    try {
+                        await pool.query(statement);
+                    } catch (err) {
+                        // Ignore duplicate errors (already exists)
+                        if (!err.message.includes('already exists')) {
+                            console.warn('⚠️ Schema statement warning:', err.message);
+                        }
+                    }
+                }
+            }
+            
+            console.log('✅ Database schema initialized successfully');
+            return true;
+        } else {
+            console.warn('⚠️ schema.sql not found, skipping schema initialization');
+            return false;
+        }
+    } catch (error) {
+        console.error('❌ Schema initialization error:', error.message);
+        
+        if (process.env.NODE_ENV === 'production') {
+            console.error('❌ CRITICAL: Schema initialization failed in production');
+            throw error;
+        }
+        
+        console.warn('⚠️ Continuing without schema initialization');
+        return false;
+    }
+}
+
+// Complete database initialization (blocking for production)
+async function initializeDatabase() {
+    try {
+        console.log('🔄 Starting database initialization...');
+        
+        // Initialize pool
+        const poolReady = await initializeDatabasePool();
+        
+        if (poolReady) {
+            // Initialize schema
+            await initializeDatabaseSchema();
+            
+            // Verify tables exist
+            const tablesCheck = await safeQuery(`
+                SELECT table_name 
+                FROM information_schema.tables 
+                WHERE table_schema = 'public'
+            `);
+            
+            if (tablesCheck && tablesCheck.rows.length > 0) {
+                console.log(`✅ Database verified with ${tablesCheck.rows.length} tables`);
+                console.log('📋 Tables:', tablesCheck.rows.map(r => r.table_name).join(', '));
+            }
+            
+            console.log('✅ Database initialization complete');
+            return true;
+        } else {
+            console.warn('⚠️ Database not available, running in limited mode');
+            return false;
+        }
+    } catch (error) {
+        console.error('❌ Database initialization failed:', error.message);
+        
+        if (process.env.NODE_ENV === 'production') {
+            console.error('❌ CRITICAL: Cannot start application in production without database');
+            throw error;
+        }
+        
+        console.warn('⚠️ Continuing without database (development mode)');
+        return false;
+    }
+}
+
+// Middleware setup (before database initialization)
 app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname)));
@@ -362,10 +469,14 @@ function generateRegistrationHash(data) {
 // Health check
 app.get('/api/health', (req, res) => {
     res.json({
-        status: 'healthy',
+        status: databaseAvailable ? 'healthy' : 'degraded',
         service: 'farmers-consensus-api',
+        database_connected: databaseAvailable,
+        database_status: databaseAvailable ? 'available' : 'unavailable',
         blockchain_connected: true,
-        cheese_api_url: CHEESE_API_URL
+        cheese_api_url: CHEESE_API_URL,
+        environment: process.env.NODE_ENV || 'development',
+        timestamp: new Date().toISOString()
     });
 });
 
@@ -382,6 +493,16 @@ app.post('/api/farmers/register', async (req, res) => {
             });
         }
 
+        // Check database availability
+        if (!databaseAvailable) {
+            console.error('❌ Database not available for farmer registration');
+            return res.status(503).json({
+                success: false,
+                error: 'Database not available. Please try again later.',
+                databaseStatus: 'unavailable'
+            });
+        }
+
         // Calculate fees and rewards
         const isPremium = registrationData.premiumTier || false;
         const totalFee = TRANSACTION_FEE + (isPremium ? PREMIUM_TIER_FEE : 0);
@@ -390,41 +511,41 @@ app.post('/api/farmers/register', async (req, res) => {
         // Create blockchain transaction
         const blockchainResult = await createBlockchainTransaction(registrationData);
 
-        // Save farmer to database
-        if (pool) {
-            try {
-                await pool.query(
-                    `INSERT INTO farmers_registrations
-                    (farmer_id, farmer_name, contact, province, municipality, barangay,
-                     vegetable_id, area_sqm, area_ha, expected_yield_tons,
-                     planting_date, harvest_date, blockchain_transaction_id, blockchain_hash, premium_tier)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
-                    ON CONFLICT (farmer_id) DO NOTHING`,
-                    [
-                        registrationData.id || `FC-${Date.now()}`,
-                        registrationData.farmerName,
-                        registrationData.contact || '',
-                        registrationData.province,
-                        registrationData.municipality || '',
-                        registrationData.barangay || '',
-                        registrationData.vegetableId,
-                        registrationData.areaSqm || 0,
-                        registrationData.areaHa || 0,
-                        registrationData.expectedYieldTons || 0,
-                        registrationData.plantingDate || null,
-                        registrationData.harvestDate || null,
-                        blockchainResult.txid || null,
-                        blockchainResult.hash || null,
-                        isPremium
-                    ]
-                );
-                console.log('✅ Farmer saved to database:', registrationData.farmerName);
-            } catch (dbError) {
-                console.error('❌ Failed to save farmer to database:', dbError.message);
-                // Continue with registration even if database save fails
-            }
-        } else {
-            console.warn('⚠️ Database not available, skipping farmer database save');
+        // Save farmer to database using safeQuery
+        try {
+            await safeQuery(
+                `INSERT INTO farmers_registrations
+                (farmer_id, farmer_name, contact, province, municipality, barangay,
+                 vegetable_id, area_sqm, area_ha, expected_yield_tons,
+                 planting_date, harvest_date, blockchain_transaction_id, blockchain_hash, premium_tier)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+                ON CONFLICT (farmer_id) DO NOTHING`,
+                [
+                    registrationData.id || `FC-${Date.now()}`,
+                    registrationData.farmerName,
+                    registrationData.contact || '',
+                    registrationData.province,
+                    registrationData.municipality || '',
+                    registrationData.barangay || '',
+                    registrationData.vegetableId,
+                    registrationData.areaSqm || 0,
+                    registrationData.areaHa || 0,
+                    registrationData.expectedYieldTons || 0,
+                    registrationData.plantingDate || null,
+                    registrationData.harvestDate || null,
+                    blockchainResult.txid || null,
+                    blockchainResult.hash || null,
+                    isPremium
+                ]
+            );
+            console.log('✅ Farmer saved to database:', registrationData.farmerName);
+        } catch (dbError) {
+            console.error('❌ Failed to save farmer to database:', dbError.message);
+            return res.status(500).json({
+                success: false,
+                error: 'Failed to save registration to database',
+                details: dbError.message
+            });
         }
 
         // Record revenue for Cheese Blockchain
@@ -772,6 +893,16 @@ app.post('/api/auth/register', async (req, res) => {
             return res.status(400).json({ 
                 success: false, 
                 error: 'Invalid user type' 
+            });
+        }
+        
+        // Check database availability
+        if (!databaseAvailable) {
+            console.error('❌ Database not available for user registration');
+            return res.status(503).json({
+                success: false,
+                error: 'Database not available. Please try again later.',
+                databaseStatus: 'unavailable'
             });
         }
         
@@ -1668,10 +1799,37 @@ app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-// Start server
-app.listen(process.env.PORT || PORT, () => {
+// Initialize database and start server (blocking in production)
+console.log('🔄 Starting Farmers Consensus Server...');
+console.log('🔄 Environment:', process.env.NODE_ENV || 'development');
+
+initializeDatabase().then(dbReady => {
+    if (!dbReady && process.env.NODE_ENV === 'production') {
+        console.error('❌ CRITICAL: Database initialization failed in production');
+        console.error('❌ Server cannot start without database');
+        process.exit(1);
+    }
+    
+    console.log('✅ Database initialization phase complete');
+    
+    if (dbReady) {
+        console.log('✅ Database available and ready');
+        console.log('💾 Persistent storage: PostgreSQL (Railway)');
+    } else {
+        console.warn('⚠️ Database not available, running in limited mode (development only)');
+    }
+    
+    // Start server
     const actualPort = process.env.PORT || PORT;
-    console.log(`🌾 Farmers Consensus API Server running on port ${actualPort}`);
-    console.log(`🧀 Connected to Cheese Blockchain at ${CHEESE_API_URL}`);
-    console.log(`📱 Frontend available at http://localhost:${actualPort}`);
+    app.listen(actualPort, () => {
+        console.log(`🌾 Farmers Consensus API Server running on port ${actualPort}`);
+        console.log(`🧀 Connected to Cheese Blockchain at ${CHEESE_API_URL}`);
+        console.log(`📱 Frontend available at http://localhost:${actualPort}`);
+        console.log(`💾 Database status: ${dbReady ? 'CONNECTED' : 'NOT AVAILABLE'}`);
+        console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+    });
+}).catch(error => {
+    console.error('❌ Fatal error during server startup:', error.message);
+    console.error('❌ Server cannot start');
+    process.exit(1);
 });
