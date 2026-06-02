@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Add CHEESE Blockchain to Web3 Wallet</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            max-width: 600px;
+            width: 100%;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+        
+        .subtitle {
+            color: #666;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .network-info {
+            background: #f8f9fa;
+            border-left: 4px solid #667eea;
+            padding: 20px;
+            margin-bottom: 30px;
+            border-radius: 8px;
+        }
+        
+        .network-info h3 {
+            color: #667eea;
+            margin-bottom: 15px;
+        }
+        
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        
+        .info-row:last-child {
+            border-bottom: none;
+        }
+        
+        .label {
+            color: #666;
+            font-weight: 500;
+        }
+        
+        .value {
+            color: #333;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+        
+        .button {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            margin-bottom: 15px;
+        }
+        
+        .button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
+        }
+        
+        .button:active {
+            transform: translateY(0);
+        }
+        
+        .button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .instructions {
+            margin-top: 30px;
+            padding: 20px;
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            border-radius: 8px;
+        }
+        
+        .instructions h3 {
+            color: #856404;
+            margin-bottom: 15px;
+        }
+        
+        .instructions ol {
+            margin-left: 20px;
+            color: #856404;
+        }
+        
+        .instructions li {
+            margin-bottom: 10px;
+        }
+        
+        .status {
+            text-align: center;
+            margin-top: 20px;
+            padding: 10px;
+            border-radius: 8px;
+            display: none;
+        }
+        
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            display: block;
+        }
+        
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            display: block;
+        }
+        
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            display: block;
+        }
+        
+        .back-link {
+            text-align: center;
+            margin-top: 20px;
+        }
+        
+        .back-link a {
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 500;
+        }
+        
+        .back-link a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧀 Add CHEESE Blockchain</h1>
+        <p class="subtitle">Connect your Web3 wallet to receive NCH rewards from Farmers Consensus</p>
+        
+        <div class="network-info">
+            <h3>Network Details</h3>
+            <div class="info-row">
+                <span class="label">Network Name:</span>
+                <span class="value">CHEESE Blockchain</span>
+            </div>
+            <div class="info-row">
+                <span class="label">Chain ID:</span>
+                <span class="value">20250 (0x4F2A)</span>
+            </div>
+            <div class="info-row">
+                <span class="label">Currency:</span>
+                <span class="value">NCH (NCheese)</span>
+            </div>
+            <div class="info-row">
+                <span class="label">RPC URL:</span>
+                <span class="value">https://cheeseblockchain.com/api/rpc</span>
+            </div>
+            <div class="info-row">
+                <span class="label">Explorer:</span>
+                <span class="value">https://cheeseblockchain.com/explorer</span>
+            </div>
+        </div>
+        
+        <button id="addNetwork" class="button">
+            🦊 Add to MetaMask
+        </button>
+        
+        <button id="addNetworkBinance" class="button">
+            🔷 Add to Binance Wallet
+        </button>
+        
+        <div id="status" class="status"></div>
+        
+        <div class="instructions">
+            <h3>📋 Manual Setup Instructions</h3>
+            <p>If the automatic setup doesn't work, you can add the network manually:</p>
+            <ol>
+                <li>Open your Web3 wallet (MetaMask, Binance Wallet, etc.)</li>
+                <li>Go to Settings → Networks → Add Network</li>
+                <li>Enter the network details shown above</li>
+                <li>Save and switch to the CHEESE Blockchain network</li>
+            </ol>
+        </div>
+        
+        <div class="back-link">
+            <a href="/">← Back to Farmers Consensus</a>
+        </div>
+    </div>
+
+    <script>
+        const networkConfig = {
+            chainId: '0x4F2A',
+            chainName: 'CHEESE Blockchain',
+            nativeCurrency: {
+                name: 'NCheese',
+                symbol: 'NCH',
+                decimals: 18
+            },
+            rpcUrls: ['https://cheeseblockchain.com/api/rpc'],
+            blockExplorerUrls: ['https://cheeseblockchain.com/explorer']
+        };
+
+        function showStatus(message, type) {
+            const status = document.getElementById('status');
+            status.textContent = message;
+            status.className = `status ${type}`;
+        }
+
+        async function addNetworkToWallet() {
+            if (typeof window.ethereum === 'undefined') {
+                showStatus('❌ No Web3 wallet detected. Please install MetaMask or Binance Wallet.', 'error');
+                return;
+            }
+
+            try {
+                showStatus('⏳ Adding network to wallet...', 'info');
+                
+                await window.ethereum.request({
+                    method: 'wallet_addEthereumChain',
+                    params: [networkConfig]
+                });
+                
+                showStatus('✅ CHEESE Blockchain network added successfully! Please switch to it in your wallet.', 'success');
+            } catch (error) {
+                console.error('Error adding network:', error);
+                
+                if (error.code === 4001) {
+                    showStatus('❌ Request rejected by user.', 'error');
+                } else if (error.code === -32602) {
+                    showStatus('ℹ️ Network may already be added. Please check your wallet networks.', 'info');
+                } else {
+                    showStatus('❌ Error adding network: ' + error.message, 'error');
+                }
+            }
+        }
+
+        document.getElementById('addNetwork').addEventListener('click', addNetworkToWallet);
+        document.getElementById('addNetworkBinance').addEventListener('click', addNetworkToWallet);
+
+        // Check if wallet is available on page load
+        if (typeof window.ethereum === 'undefined') {
+            showStatus('ℹ️ No Web3 wallet detected. Please install MetaMask or Binance Wallet to use this feature.', 'info');
+        }
+    </script>
+</body>
+</html>
