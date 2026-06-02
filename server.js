@@ -160,24 +160,28 @@ async function initializeDatabaseSchema() {
         if (fs.existsSync(schemaPath)) {
             const schema = fs.readFileSync(schemaPath, 'utf8');
             
-            // Split schema into statements, preserving PL/pgSQL function bodies
-            const statements = splitSQLStatements(schema);
-            
-            for (const statement of statements) {
-                if (statement.trim()) {
-                    try {
-                        await pool.query(statement);
-                    } catch (err) {
-                        // Ignore duplicate errors (already exists)
-                        if (!err.message.includes('already exists')) {
-                            console.warn('⚠️ Schema statement warning:', err.message);
-                        }
-                    }
+            // Execute entire schema as a single transaction to handle dependencies correctly
+            const client = await pool.connect();
+            try {
+                await client.query('BEGIN');
+                await client.query(schema);
+                await client.query('COMMIT');
+                console.log('✅ Database schema initialized successfully');
+                return true;
+            } catch (err) {
+                await client.query('ROLLBACK');
+                
+                // If schema already exists, that's okay
+                if (err.message.includes('already exists')) {
+                    console.log('✅ Database schema already exists');
+                    return true;
                 }
+                
+                console.error('❌ Schema execution error:', err.message);
+                throw err;
+            } finally {
+                client.release();
             }
-            
-            console.log('✅ Database schema initialized successfully');
-            return true;
         } else {
             console.warn('⚠️ schema.sql not found, skipping schema initialization');
             return false;
