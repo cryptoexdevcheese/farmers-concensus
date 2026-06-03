@@ -309,7 +309,7 @@ const app = {
     customRow.classList.add("hidden");
     customInput.value = "";
     customInput.required = false;
-    customInput.parentElement.parentElement.classList.remove("invalid");
+    customInput.closest(".form-group")?.classList.remove("invalid");
   },
 
   // Dynamic Geographic Dropdown logic: Province -> Municipality -> Barangay (full PSGC via API)
@@ -422,7 +422,7 @@ const app = {
         customRow.classList.add("hidden");
         customInput.value = "";
         customInput.required = false;
-        customInput.parentElement.parentElement.classList.remove("invalid");
+        customInput.closest(".form-group")?.classList.remove("invalid");
       }
       this.updateEstimator();
     });
@@ -508,7 +508,7 @@ const app = {
     const plantingDateInput = document.getElementById("planting-date");
 
     landAreaInput.addEventListener("input", () => {
-      landAreaInput.parentElement.parentElement.classList.remove("invalid");
+      landAreaInput.closest(".form-group")?.classList.remove("invalid");
       this.updateEstimator();
     });
 
@@ -517,7 +517,7 @@ const app = {
     });
 
     plantingDateInput.addEventListener("change", () => {
-      plantingDateInput.parentElement.classList.remove("invalid");
+      plantingDateInput.closest(".form-group")?.classList.remove("invalid");
       this.updateEstimator();
     });
   },
@@ -587,19 +587,19 @@ const app = {
 
       // Validate Farmer Name
       if (!nameInput.value.trim()) {
-        nameInput.parentElement.parentElement.classList.add("invalid");
+        nameInput.closest(".form-group")?.classList.add("invalid");
         isValid = false;
       } else {
-        nameInput.parentElement.parentElement.classList.remove("invalid");
+        nameInput.closest(".form-group")?.classList.remove("invalid");
       }
 
       // Validate Contact (11-digit mobile starting with 09)
       const contactRegex = /^09\d{9}$/;
       if (!contactRegex.test(contactInput.value.trim())) {
-        contactInput.parentElement.parentElement.classList.add("invalid");
+        contactInput.closest(".form-group")?.classList.add("invalid");
         isValid = false;
       } else {
-        contactInput.parentElement.parentElement.classList.remove("invalid");
+        contactInput.closest(".form-group")?.classList.remove("invalid");
       }
 
       // Validate Geographical drop-downs
@@ -625,14 +625,14 @@ const app = {
         barangaySelect.closest(".form-group")?.classList.remove("invalid");
         const customInput = document.getElementById("custom-barangay");
         if (!customInput.value.trim()) {
-          customInput.parentElement.parentElement.classList.add("invalid");
+          customInput.closest(".form-group")?.classList.add("invalid");
           isValid = false;
         } else {
-          customInput.parentElement.parentElement.classList.remove("invalid");
+          customInput.closest(".form-group")?.classList.remove("invalid");
         }
       } else {
         barangaySelect.closest(".form-group")?.classList.remove("invalid");
-        document.getElementById("custom-barangay").parentElement.parentElement.classList.remove("invalid");
+        document.getElementById("custom-barangay")?.closest(".form-group")?.classList.remove("invalid");
       }
 
       // Validate selected crop
@@ -658,18 +658,18 @@ const app = {
       // Validate Land Area
       const areaVal = parseFloat(landAreaInput.value);
       if (isNaN(areaVal) || areaVal <= 0) {
-        landAreaInput.parentElement.parentElement.parentElement.classList.add("invalid");
+        landAreaInput.closest(".form-group")?.classList.add("invalid");
         isValid = false;
       } else {
-        landAreaInput.parentElement.parentElement.parentElement.classList.remove("invalid");
+        landAreaInput.closest(".form-group")?.classList.remove("invalid");
       }
 
       // Validate Planting Date
       if (!plantingDateInput.value) {
-        plantingDateInput.parentElement.classList.add("invalid");
+        plantingDateInput.closest(".form-group")?.classList.add("invalid");
         isValid = false;
       } else {
-        plantingDateInput.parentElement.classList.remove("invalid");
+        plantingDateInput.closest(".form-group")?.classList.remove("invalid");
       }
 
       // If invalid, bounce back and focus on first invalid item

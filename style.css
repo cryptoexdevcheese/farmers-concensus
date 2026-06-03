@@ -913,21 +913,19 @@ select:disabled {
   transition: border-color 0.2s ease;
 }
 
-.input-group-united .input-wrapper {
+.input-group-united > input[type="number"],
+.input-group-united > input[type="text"] {
+  flex: 1;
+  min-width: 0;
   border: none;
   border-radius: 0;
   background: transparent;
   box-shadow: none;
-  min-height: auto;
 }
 
-.input-group-united .input-wrapper:focus-within {
+.input-group-united > input:focus {
   box-shadow: none;
-}
-
-.input-group-united .input-wrapper input {
-  border: none;
-  border-radius: 0;
+  outline: none;
 }
 
 .input-group-united select {

@@ -15,7 +15,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   
   <!-- CSS Stylesheet -->
-  <link rel="stylesheet" href="style.css?v=7">
+  <link rel="stylesheet" href="style.css?v=8">
   
   <!-- Chart.js for High-End Visualizations -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -223,18 +223,12 @@
                 <div class="form-row flex-row">
                   <div class="form-group flex-2">
                     <label for="farmer-name">Full Name <span class="required">*</span></label>
-                    <div class="input-wrapper">
-                      <i data-lucide="user" class="input-icon"></i>
-                      <input type="text" id="farmer-name" placeholder="Juan Dela Cruz" required>
-                    </div>
+                    <input type="text" id="farmer-name" placeholder="Juan Dela Cruz" required>
                     <span class="error-msg" id="name-error">Please enter your name</span>
                   </div>
                   <div class="form-group flex-1">
                     <label for="farmer-contact">Mobile Number <span class="required">*</span></label>
-                    <div class="input-wrapper">
-                      <i data-lucide="phone" class="input-icon"></i>
-                      <input type="tel" id="farmer-contact" placeholder="09xxxxxxxxx" required pattern="^09\d{9}$">
-                    </div>
+                    <input type="tel" id="farmer-contact" placeholder="09xxxxxxxxx" required pattern="^09\d{9}$">
                     <span class="error-msg" id="contact-error">Enter a valid 11-digit mobile number</span>
                   </div>
                 </div>
@@ -246,32 +240,23 @@
                 <div class="form-row triple-row">
                   <div class="form-group">
                     <label for="select-province">Province <span class="required">*</span></label>
-                    <div class="input-wrapper">
-                      <i data-lucide="map-pin" class="input-icon" aria-hidden="true"></i>
-                      <select id="select-province" required>
-                        <option value="">-- Choose Province --</option>
-                      </select>
-                    </div>
+                    <select id="select-province" required>
+                      <option value="">-- Choose Province --</option>
+                    </select>
                     <span class="error-msg" id="province-error">Please select a province</span>
                   </div>
                   <div class="form-group">
                     <label for="select-municipality">City / Municipality <span class="required">*</span></label>
-                    <div class="input-wrapper">
-                      <i data-lucide="building-2" class="input-icon" aria-hidden="true"></i>
-                      <select id="select-municipality" required disabled>
-                        <option value="">-- Select Municipality --</option>
-                      </select>
-                    </div>
+                    <select id="select-municipality" required disabled>
+                      <option value="">-- Select Municipality --</option>
+                    </select>
                     <span class="error-msg" id="municipality-error">Please select a municipality</span>
                   </div>
                   <div class="form-group">
                     <label for="select-barangay">Barangay <span class="required">*</span></label>
-                    <div class="input-wrapper">
-                      <i data-lucide="map-pin" class="input-icon" aria-hidden="true"></i>
-                      <select id="select-barangay" required disabled>
-                        <option value="">-- Select Barangay --</option>
-                      </select>
-                    </div>
+                    <select id="select-barangay" required disabled>
+                      <option value="">-- Select Barangay --</option>
+                    </select>
                     <span class="error-msg" id="barangay-error">Please select a barangay</span>
                   </div>
                 </div>
@@ -279,10 +264,7 @@
                 <div class="form-row hidden animate-fade-in" id="custom-barangay-row" style="margin-top: 16px;">
                   <div class="form-group">
                     <label for="custom-barangay">Specify Barangay Name <span class="required">*</span></label>
-                    <div class="input-wrapper">
-                      <i data-lucide="map-pin" class="input-icon"></i>
-                      <input type="text" id="custom-barangay" placeholder="e.g. Barangay San Sebastian">
-                    </div>
+                    <input type="text" id="custom-barangay" placeholder="e.g. Barangay San Sebastian">
                     <span class="error-msg" id="custom-barangay-error">Please enter the custom Barangay name</span>
                   </div>
                 </div>
@@ -322,10 +304,7 @@
                   <div class="form-group flex-2">
                     <label for="land-area">Size of Plantation <span class="required">*</span></label>
                     <div class="input-group-united">
-                      <div class="input-wrapper">
-                        <i data-lucide="maximize" class="input-icon"></i>
-                        <input type="number" id="land-area" placeholder="e.g. 2.5" min="0.001" step="any" required>
-                      </div>
+                      <input type="number" id="land-area" placeholder="e.g. 2.5" min="0.001" step="any" required>
                       <select id="area-unit">
                         <option value="ha">Hectares (ha)</option>
                         <option value="sqm">Square Meters (sqm)</option>
@@ -335,19 +314,14 @@
                   </div>
                   <div class="form-group flex-1">
                     <label for="planting-date">Planting Date <span class="required">*</span></label>
-                    <div class="input-wrapper">
-                      <i data-lucide="calendar" class="input-icon"></i>
-                      <input type="date" id="planting-date" required>
-                    </div>
+                    <input type="date" id="planting-date" required>
                     <span class="error-msg" id="date-error">Select a valid planting date</span>
                   </div>
                 </div>
                 <div class="form-row flex-row">
                   <div class="form-group flex-1">
                     <label for="seedling-type">Seedling Type <span class="required">*</span></label>
-                    <div class="input-wrapper">
-                      <i data-lucide="sprout" class="input-icon"></i>
-                      <select id="seedling-type" required>
+                    <select id="seedling-type" required>
                         <option value="">Select seedling type</option>
                         <option value="direct_seeding">Direct Seeding</option>
                         <option value="transplanted">Transplanted Seedlings</option>
@@ -357,22 +331,18 @@
                         <option value="organic">Organic Seedlings</option>
                         <option value="hybrid">Hybrid Varieties</option>
                         <option value="native">Native Varieties</option>
-                      </select>
-                    </div>
+                    </select>
                     <span class="error-msg" id="seedling-error">Please select seedling type</span>
                   </div>
                   <div class="form-group flex-1">
                     <label for="farming-method">Farming Method</label>
-                    <div class="input-wrapper">
-                      <i data-lucide="tractor" class="input-icon"></i>
-                      <select id="farming-method">
+                    <select id="farming-method">
                         <option value="conventional">Conventional</option>
                         <option value="organic">Organic</option>
                         <option value="sustainable">Sustainable</option>
                         <option value="hydroponic">Hydroponic</option>
                         <option value="mixed">Mixed Farming</option>
-                      </select>
-                    </div>
+                    </select>
                   </div>
                 </div>
               </div>
@@ -1011,18 +981,12 @@
       <form id="login-form" class="auth-form">
         <div class="form-group">
           <label for="login-email">Email Address</label>
-          <div class="input-wrapper">
-            <i data-lucide="mail" class="input-icon"></i>
-            <input type="email" id="login-email" name="email" placeholder="you@example.com" required>
-          </div>
+          <input type="email" id="login-email" name="email" placeholder="you@example.com" required>
         </div>
         
         <div class="form-group">
           <label for="login-password">Password</label>
-          <div class="input-wrapper">
-            <i data-lucide="lock" class="input-icon"></i>
-            <input type="password" id="login-password" name="password" placeholder="••••••••" required>
-          </div>
+          <input type="password" id="login-password" name="password" placeholder="••••••••" required>
         </div>
         
         <button type="submit" class="btn btn-primary btn-full">
@@ -1051,47 +1015,32 @@
       <form id="register-form" class="auth-form">
         <div class="form-group">
           <label for="register-name">Full Name</label>
-          <div class="input-wrapper">
-            <i data-lucide="user" class="input-icon"></i>
-            <input type="text" id="register-name" name="fullName" placeholder="Juan Dela Cruz" required>
-          </div>
+          <input type="text" id="register-name" name="fullName" placeholder="Juan Dela Cruz" required>
         </div>
         
         <div class="form-group">
           <label for="register-email">Email Address</label>
-          <div class="input-wrapper">
-            <i data-lucide="mail" class="input-icon"></i>
-            <input type="email" id="register-email" name="email" placeholder="you@example.com" required>
-          </div>
+          <input type="email" id="register-email" name="email" placeholder="you@example.com" required>
         </div>
         
         <div class="form-group">
           <label for="register-password">Password</label>
-          <div class="input-wrapper">
-            <i data-lucide="lock" class="input-icon"></i>
-            <input type="password" id="register-password" name="password" placeholder="••••••••" required>
-          </div>
+          <input type="password" id="register-password" name="password" placeholder="••••••••" required>
         </div>
         
         <div class="form-group">
           <label for="register-usertype">I am a...</label>
-          <div class="input-wrapper">
-            <i data-lucide="users" class="input-icon"></i>
-            <select id="register-usertype" name="userType" required>
-              <option value="">Select your role</option>
-              <option value="farmer">Farmer</option>
-              <option value="buyer">Buyer</option>
-            </select>
-          </div>
+          <select id="register-usertype" name="userType" required>
+            <option value="">Select your role</option>
+            <option value="farmer">Farmer</option>
+            <option value="buyer">Buyer</option>
+          </select>
         </div>
         
         <div class="form-group">
           <label for="register-registration-id">Registration ID (Optional)</label>
-          <div class="input-wrapper">
-            <i data-lucide="hash" class="input-icon"></i>
-            <input type="text" id="register-registration-id" name="registrationId" placeholder="FC-2026-XXXX">
-            <small>Link your existing registration to earn rewards</small>
-          </div>
+          <input type="text" id="register-registration-id" name="registrationId" placeholder="FC-2026-XXXX">
+          <small>Link your existing registration to earn rewards</small>
         </div>
         
         <button type="submit" class="btn btn-primary btn-full">
@@ -1210,6 +1159,6 @@
 
   <!-- Injecting dynamic JS files -->
   <script src="data.js?v=5"></script>
-  <script src="app.js?v=7"></script>
+  <script src="app.js?v=8"></script>
 </body>
 </html>
