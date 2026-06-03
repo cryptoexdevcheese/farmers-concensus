@@ -782,32 +782,42 @@ p {
   color: var(--color-danger);
 }
 
-/* Wrapper with Input Icon */
+/* Wrapper with Input Icon — grid keeps icon out of the text area */
 .input-wrapper {
-  position: relative;
-  display: flex;
+  display: grid;
+  grid-template-columns: 2.75rem minmax(0, 1fr);
   align-items: center;
   width: 100%;
+  background-color: var(--color-bg-input);
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius-sm);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  min-height: 46px;
+}
+
+.input-wrapper:focus-within {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-light);
 }
 
 .input-icon {
-  position: absolute;
-  left: 14px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 18px;
-  height: 18px;
+  grid-column: 1;
+  grid-row: 1;
+  justify-self: center;
+  align-self: center;
+  width: 20px;
+  height: 20px;
   color: var(--color-text-muted);
   pointer-events: none;
-  z-index: 1;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
 .input-icon svg {
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   stroke: currentColor;
 }
 
@@ -843,20 +853,36 @@ select option {
   color: #111c15;
 }
 
-.input-wrapper input {
-  padding-left: 42px;
+.input-wrapper input,
+.input-wrapper select {
+  grid-column: 2;
+  grid-row: 1;
+  width: 100%;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  padding: 12px 14px 12px 4px;
+  border-radius: 0;
+  box-shadow: none;
 }
 
-/* Selects with left icon + custom chevron (aligned inside field) */
+.input-wrapper input:focus,
+.input-wrapper select:focus {
+  outline: none;
+  border: none;
+  box-shadow: none;
+  background: transparent;
+}
+
+/* Selects: custom chevron on the right */
 .input-wrapper select {
-  padding-left: 42px;
-  padding-right: 40px;
+  padding-right: 2.25rem;
   appearance: none;
   -webkit-appearance: none;
   -moz-appearance: none;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236ee7b7' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
-  background-position: right 12px center;
+  background-position: right 10px center;
   background-size: 16px;
 }
 
@@ -885,6 +911,18 @@ select:disabled {
   background-color: var(--color-bg-input);
   overflow: hidden;
   transition: border-color 0.2s ease;
+}
+
+.input-group-united .input-wrapper {
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  min-height: auto;
+}
+
+.input-group-united .input-wrapper:focus-within {
+  box-shadow: none;
 }
 
 .input-group-united .input-wrapper input {
@@ -2620,17 +2658,36 @@ textarea {
     margin-bottom: 8px;
   }
   
-  input[type="text"],
-  input[type="email"],
-  input[type="tel"],
-  input[type="number"],
-  input[type="date"],
-  select,
+  /* Standalone fields only — do not override icon-inset grid fields */
+  .form-group > input[type="text"],
+  .form-group > input[type="email"],
+  .form-group > input[type="tel"],
+  .form-group > input[type="number"],
+  .form-group > input[type="date"],
+  .form-group > select,
+  .form-group > textarea,
   textarea {
-    font-size: 16px; /* Prevents iOS zoom */
+    font-size: 16px;
     padding: 14px 16px;
-    min-height: 48px; /* Touch-friendly height */
+    min-height: 48px;
     border-radius: 12px;
+  }
+
+  .input-wrapper {
+    grid-template-columns: 3rem minmax(0, 1fr);
+    min-height: 48px;
+    border-radius: 12px;
+  }
+
+  .input-wrapper input,
+  .input-wrapper select {
+    font-size: 16px;
+    padding: 14px 14px 14px 4px;
+    min-height: 46px;
+  }
+
+  .input-wrapper select {
+    padding-right: 2.5rem;
   }
   
   .checkbox-item,
@@ -2931,10 +2988,6 @@ textarea {
     background: transparent;
   }
 
-  .input-wrapper select,
-  .input-wrapper input {
-    min-height: 48px;
-  }
 }
 
 /* Loading States for Mobile */
@@ -3656,35 +3709,17 @@ textarea {
 }
 
 .auth-form .input-wrapper {
-  position: relative;
-}
-
-.auth-form .input-wrapper i {
-  position: absolute;
-  left: 12px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: var(--color-text-muted);
-  width: 16px;
-  height: 16px;
-}
-
-.auth-form input,
-.auth-form select {
-  width: 100%;
-  padding: 12px 12px 12px 40px;
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
   background: var(--color-surface);
-  color: var(--color-text);
-  font-size: 14px;
-  transition: all 0.2s ease;
+  border-radius: 8px;
 }
 
-.auth-form input:focus,
-.auth-form select:focus {
-  outline: none;
-  border-color: var(--color-primary);
+.auth-form .input-wrapper input,
+.auth-form .input-wrapper select {
+  font-size: 14px;
+  padding: 12px 12px 12px 4px;
+}
+
+.auth-form .input-wrapper:focus-within {
   box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
 }
 
