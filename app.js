@@ -344,7 +344,7 @@ const app = {
       municipalitySelect.innerHTML = '<option value="">-- Select Municipality --</option>';
       municipalitySelect.disabled = true;
       this.resetBarangayDropdown(barangaySelect, customRow, customInput);
-      provinceSelect.parentElement.classList.remove("invalid");
+      provinceSelect.closest(".form-group")?.classList.remove("invalid");
 
       if (!selected?.dataset.regCode) {
         this.updateEstimator();
@@ -379,7 +379,7 @@ const app = {
       const selectedMun = municipalitySelect.selectedOptions[0];
 
       this.resetBarangayDropdown(barangaySelect, customRow, customInput);
-      municipalitySelect.parentElement.classList.remove("invalid");
+      municipalitySelect.closest(".form-group")?.classList.remove("invalid");
 
       if (!selectedMun?.dataset.munCityCode) {
         this.updateEstimator();
@@ -412,7 +412,7 @@ const app = {
 
     // Handle Barangay Selection
     barangaySelect.addEventListener("change", (e) => {
-      barangaySelect.parentElement.classList.remove("invalid");
+      barangaySelect.closest(".form-group")?.classList.remove("invalid");
       
       if (e.target.value === "other") {
         customRow.classList.remove("hidden");
@@ -604,25 +604,25 @@ const app = {
 
       // Validate Geographical drop-downs
       if (!provinceSelect.value) {
-        provinceSelect.parentElement.classList.add("invalid");
+        provinceSelect.closest(".form-group")?.classList.add("invalid");
         isValid = false;
       } else {
-        provinceSelect.parentElement.classList.remove("invalid");
+        provinceSelect.closest(".form-group")?.classList.remove("invalid");
       }
 
       if (!municipalitySelect.value) {
-        municipalitySelect.parentElement.classList.add("invalid");
+        municipalitySelect.closest(".form-group")?.classList.add("invalid");
         isValid = false;
       } else {
-        municipalitySelect.parentElement.classList.remove("invalid");
+        municipalitySelect.closest(".form-group")?.classList.remove("invalid");
       }
 
       // Validate Barangay select box & custom input fallback
       if (!barangaySelect.value) {
-        barangaySelect.parentElement.classList.add("invalid");
+        barangaySelect.closest(".form-group")?.classList.add("invalid");
         isValid = false;
       } else if (barangaySelect.value === "other") {
-        barangaySelect.parentElement.classList.remove("invalid");
+        barangaySelect.closest(".form-group")?.classList.remove("invalid");
         const customInput = document.getElementById("custom-barangay");
         if (!customInput.value.trim()) {
           customInput.parentElement.parentElement.classList.add("invalid");
@@ -631,7 +631,7 @@ const app = {
           customInput.parentElement.parentElement.classList.remove("invalid");
         }
       } else {
-        barangaySelect.parentElement.classList.remove("invalid");
+        barangaySelect.closest(".form-group")?.classList.remove("invalid");
         document.getElementById("custom-barangay").parentElement.parentElement.classList.remove("invalid");
       }
 
@@ -751,8 +751,8 @@ const app = {
       this.selectedVegetableId = "";
       document.getElementById("selected-vegetable-id").value = "";
       
-      const chips = document.querySelectorAll(".veg-chip");
-      chips.forEach(c => c.classList.remove("selected"));
+      document.querySelectorAll(".veg-chip").forEach((c) => c.classList.remove("selected"));
+      document.querySelectorAll("#vegetable-list-mobile li").forEach((li) => li.classList.remove("selected"));
 
       // Set default planting date again (Today + 1 week)
       const futureDate = new Date();

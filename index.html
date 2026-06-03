@@ -15,7 +15,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   
   <!-- CSS Stylesheet -->
-  <link rel="stylesheet" href="style.css?v=5">
+  <link rel="stylesheet" href="style.css?v=6">
   
   <!-- Chart.js for High-End Visualizations -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -246,23 +246,32 @@
                 <div class="form-row triple-row">
                   <div class="form-group">
                     <label for="select-province">Province <span class="required">*</span></label>
-                    <select id="select-province" required>
-                      <option value="">-- Choose Province --</option>
-                    </select>
+                    <div class="input-wrapper">
+                      <i data-lucide="map-pin" class="input-icon" aria-hidden="true"></i>
+                      <select id="select-province" required>
+                        <option value="">-- Choose Province --</option>
+                      </select>
+                    </div>
                     <span class="error-msg" id="province-error">Please select a province</span>
                   </div>
                   <div class="form-group">
                     <label for="select-municipality">City / Municipality <span class="required">*</span></label>
-                    <select id="select-municipality" required disabled>
-                      <option value="">-- Select Municipality --</option>
-                    </select>
+                    <div class="input-wrapper">
+                      <i data-lucide="building-2" class="input-icon" aria-hidden="true"></i>
+                      <select id="select-municipality" required disabled>
+                        <option value="">-- Select Municipality --</option>
+                      </select>
+                    </div>
                     <span class="error-msg" id="municipality-error">Please select a municipality</span>
                   </div>
                   <div class="form-group">
                     <label for="select-barangay">Barangay <span class="required">*</span></label>
-                    <select id="select-barangay" required disabled>
-                      <option value="">-- Select Barangay --</option>
-                    </select>
+                    <div class="input-wrapper">
+                      <i data-lucide="map-pin" class="input-icon" aria-hidden="true"></i>
+                      <select id="select-barangay" required disabled>
+                        <option value="">-- Select Barangay --</option>
+                      </select>
+                    </div>
                     <span class="error-msg" id="barangay-error">Please select a barangay</span>
                   </div>
                 </div>
@@ -1201,6 +1210,6 @@
 
   <!-- Injecting dynamic JS files -->
   <script src="data.js?v=5"></script>
-  <script src="app.js?v=5"></script>
+  <script src="app.js?v=6"></script>
 </body>
 </html>
