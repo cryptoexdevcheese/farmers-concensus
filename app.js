@@ -263,110 +263,149 @@ const app = {
     }
   },
 
-  // Dynamic Geographic Dropdown logic: Province -> Municipality -> Barangay
-  initGeographicDropdowns() {
+  async fetchGeoJson(url) {
+    const res = await fetch(url);
+    const json = await res.json();
+    if (!res.ok || !json.success) {
+      throw new Error(json.error || `Failed to load ${url}`);
+    }
+    return json.data;
+  },
+
+  fillSelectOptions(selectEl, placeholder, items, getValue, getLabel, extraDataset) {
+    selectEl.innerHTML = `<option value="">${placeholder}</option>`;
+    items.forEach((item) => {
+      const option = document.createElement("option");
+      option.value = getValue(item);
+      option.textContent = getLabel(item);
+      if (extraDataset) extraDataset(option, item);
+      selectEl.appendChild(option);
+    });
+  },
+
+  async loadAllProvincesIntoSelect(selectEl, placeholder = "-- Choose Province --") {
+    if (!selectEl) return;
+    selectEl.disabled = true;
+    selectEl.innerHTML = `<option value="">Loading provinces...</option>`;
+    const provinces = await this.fetchGeoJson("/api/geo/provinces");
+    this.fillSelectOptions(
+      selectEl,
+      placeholder,
+      provinces,
+      (p) => p.name,
+      (p) => p.name,
+      (opt, p) => {
+        opt.dataset.regCode = p.regCode;
+        opt.dataset.provCode = p.provCode;
+      }
+    );
+    selectEl.disabled = false;
+    return provinces;
+  },
+
+  resetBarangayDropdown(barangaySelect, customRow, customInput) {
+    barangaySelect.innerHTML = '<option value="">-- Select Barangay --</option>';
+    barangaySelect.disabled = true;
+    customRow.classList.add("hidden");
+    customInput.value = "";
+    customInput.required = false;
+    customInput.parentElement.parentElement.classList.remove("invalid");
+  },
+
+  // Dynamic Geographic Dropdown logic: Province -> Municipality -> Barangay (full PSGC via API)
+  async initGeographicDropdowns() {
     const provinceSelect = document.getElementById("select-province");
     const municipalitySelect = document.getElementById("select-municipality");
     const barangaySelect = document.getElementById("select-barangay");
     const customRow = document.getElementById("custom-barangay-row");
     const customInput = document.getElementById("custom-barangay");
 
-    // Check if PHILIPPINES_GEOGRAPHY is available
-    if (!window.PHILIPPINES_GEOGRAPHY) {
-      console.error('PHILIPPINES_GEOGRAPHY not found. Make sure data.js is loaded before app.js');
-      // Fallback to basic data if not available
-      window.PHILIPPINES_GEOGRAPHY = {
-        "Benguet": {
-          "La Trinidad": ["Pico", "Balili", "Puguis", "Wangal", "Alapang", "Bahong", "Ambiong", "Shilan", "Lubas", "Beckel", "Betag"],
-          "Baguio City": ["Magsaysay", "City Camp", "Engineers Hill", "Hillside", "Holy Ghost", "San Carlos", "Jose Abad Santos"]
-        },
-        "Nueva Ecija": {
-          "Cabanatuan City": ["Valenzuela", "Magsaysay District", "Mabini Extension"],
-          "Gapan City": ["Bungo", "Mahipon", "Pambuan", "San Roque", "Santo Cristo"]
-        },
-        "Pangasinan": {
-          "Dagupan City": ["Bonuan Boquig", "Bonuan Gueset", "Carael", "Caranglaan", "Malued", "Mayombo"],
-          "Urdaneta City": ["Anonas", "Bactad East", "Nancalobasaan", "Pinmaludpod", "San Jose"]
-        }
-      };
+    if (!provinceSelect || !municipalitySelect || !barangaySelect) return;
+
+    try {
+      const provinces = await this.loadAllProvincesIntoSelect(provinceSelect, "-- Choose Province --");
+      console.log("PSGC provinces loaded:", provinces.length);
+    } catch (err) {
+      console.error("Failed to load provinces:", err);
+      provinceSelect.innerHTML = '<option value="">Unable to load provinces</option>';
+      return;
     }
 
-    console.log('Available provinces:', Object.keys(window.PHILIPPINES_GEOGRAPHY));
+    const buyerProvince = document.getElementById("buyer-province");
+    if (buyerProvince && buyerProvince.options.length <= 1) {
+      this.loadAllProvincesIntoSelect(buyerProvince, "Select Province").catch((e) =>
+        console.error("Buyer province load failed:", e)
+      );
+    }
 
-    // Populate Provinces
-    Object.keys(window.PHILIPPINES_GEOGRAPHY).sort().forEach(province => {
-      const option = document.createElement("option");
-      option.value = province;
-      option.textContent = province;
-      provinceSelect.appendChild(option);
-    });
+    provinceSelect.addEventListener("change", async () => {
+      const selected = provinceSelect.selectedOptions[0];
 
-    // Handle Province Selection
-    provinceSelect.addEventListener("change", (e) => {
-      const selectedProvince = e.target.value;
-      
-      // Reset Municipality and Barangay Dropdowns
       municipalitySelect.innerHTML = '<option value="">-- Select Municipality --</option>';
       municipalitySelect.disabled = true;
-      barangaySelect.innerHTML = '<option value="">-- Select Barangay --</option>';
-      barangaySelect.disabled = true;
-
-      // Hide and reset custom input
-      customRow.classList.add("hidden");
-      customInput.value = "";
-      customInput.required = false;
-      customInput.parentElement.parentElement.classList.remove("invalid");
-
-      // Reset Error outlines on change
+      this.resetBarangayDropdown(barangaySelect, customRow, customInput);
       provinceSelect.parentElement.classList.remove("invalid");
 
-      if (selectedProvince) {
-        const municipalities = Object.keys(window.PHILIPPINES_GEOGRAPHY[selectedProvince]).sort();
-        municipalities.forEach(mun => {
-          const option = document.createElement("option");
-          option.value = mun;
-          option.textContent = mun;
-          municipalitySelect.appendChild(option);
-        });
+      if (!selected?.dataset.regCode) {
+        this.updateEstimator();
+        return;
+      }
+
+      municipalitySelect.innerHTML = '<option value="">Loading cities/municipalities...</option>';
+      try {
+        const { regCode, provCode } = selected.dataset;
+        const municipalities = await this.fetchGeoJson(
+          `/api/geo/municipalities?regCode=${encodeURIComponent(regCode)}&provCode=${encodeURIComponent(provCode)}`
+        );
+        this.fillSelectOptions(
+          municipalitySelect,
+          "-- Select Municipality --",
+          municipalities,
+          (m) => m.name,
+          (m) => m.name,
+          (opt, m) => {
+            opt.dataset.munCityCode = m.munCityCode;
+          }
+        );
         municipalitySelect.disabled = false;
+      } catch (err) {
+        console.error("Failed to load municipalities:", err);
+        municipalitySelect.innerHTML = '<option value="">Unable to load municipalities</option>';
       }
       this.updateEstimator();
     });
 
-    // Handle Municipality Selection
-    municipalitySelect.addEventListener("change", (e) => {
-      const selectedProvince = provinceSelect.value;
-      const selectedMun = e.target.value;
+    municipalitySelect.addEventListener("change", async () => {
+      const selectedMun = municipalitySelect.selectedOptions[0];
 
-      // Reset Barangay Dropdown
-      barangaySelect.innerHTML = '<option value="">-- Select Barangay --</option>';
-      barangaySelect.disabled = true;
-
-      // Hide and reset custom input
-      customRow.classList.add("hidden");
-      customInput.value = "";
-      customInput.required = false;
-      customInput.parentElement.parentElement.classList.remove("invalid");
-
-      // Reset Error outlines on change
+      this.resetBarangayDropdown(barangaySelect, customRow, customInput);
       municipalitySelect.parentElement.classList.remove("invalid");
 
-      if (selectedMun) {
-        const barangays = window.PHILIPPINES_GEOGRAPHY[selectedProvince][selectedMun].sort();
-        barangays.forEach(brgy => {
-          const option = document.createElement("option");
-          option.value = brgy;
-          option.textContent = brgy;
-          barangaySelect.appendChild(option);
-        });
-        
-        // Append dynamic "Other Barangay" option
+      if (!selectedMun?.dataset.munCityCode) {
+        this.updateEstimator();
+        return;
+      }
+
+      barangaySelect.innerHTML = '<option value="">Loading barangays...</option>';
+      try {
+        const barangays = await this.fetchGeoJson(
+          `/api/geo/barangays?munCityCode=${encodeURIComponent(selectedMun.dataset.munCityCode)}`
+        );
+        this.fillSelectOptions(
+          barangaySelect,
+          "-- Select Barangay --",
+          barangays.map((name) => ({ name })),
+          (b) => b.name,
+          (b) => b.name
+        );
         const otherOption = document.createElement("option");
         otherOption.value = "other";
         otherOption.textContent = "✍️ Other Barangay (Type Name...)";
         barangaySelect.appendChild(otherOption);
-
         barangaySelect.disabled = false;
+      } catch (err) {
+        console.error("Failed to load barangays:", err);
+        barangaySelect.innerHTML = '<option value="">Unable to load barangays</option>';
       }
       this.updateEstimator();
     });

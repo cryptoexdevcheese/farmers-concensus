@@ -566,6 +566,44 @@ function generateRegistrationHash(data) {
     return Math.abs(hash).toString(16).padStart(64, '0');
 }
 
+// Philippine geography (PSGC) — provinces, cities/municipalities, barangays
+const psgcGeo = require('./lib/psgc-geo');
+
+app.get('/api/geo/provinces', (req, res) => {
+    try {
+        res.json({ success: true, data: psgcGeo.getProvinces() });
+    } catch (err) {
+        console.error('PSGC provinces error:', err);
+        res.status(500).json({ success: false, error: 'Failed to load provinces' });
+    }
+});
+
+app.get('/api/geo/municipalities', (req, res) => {
+    const { regCode, provCode } = req.query;
+    if (!regCode || !provCode) {
+        return res.status(400).json({ success: false, error: 'regCode and provCode are required' });
+    }
+    try {
+        res.json({ success: true, data: psgcGeo.getMunicipalities(regCode, provCode) });
+    } catch (err) {
+        console.error('PSGC municipalities error:', err);
+        res.status(500).json({ success: false, error: 'Failed to load municipalities' });
+    }
+});
+
+app.get('/api/geo/barangays', (req, res) => {
+    const { munCityCode } = req.query;
+    if (!munCityCode) {
+        return res.status(400).json({ success: false, error: 'munCityCode is required' });
+    }
+    try {
+        res.json({ success: true, data: psgcGeo.getBarangays(munCityCode) });
+    } catch (err) {
+        console.error('PSGC barangays error:', err);
+        res.status(500).json({ success: false, error: 'Failed to load barangays' });
+    }
+});
+
 // API Routes
 
 // Health check
