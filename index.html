@@ -15,7 +15,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   
   <!-- CSS Stylesheet -->
-  <link rel="stylesheet" href="style.css?v=4">
+  <link rel="stylesheet" href="style.css?v=5">
   
   <!-- Chart.js for High-End Visualizations -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -280,27 +280,17 @@
               </div>
 
               <!-- Section 3: Vegetable Selector -->
-              <div class="form-section">
+              <div class="form-section" id="vegetable-crop-section">
                 <h4 class="section-title">
                   <span class="step-num">3</span>Vegetable Crop Variety <span class="required">*</span>
                 </h4>
-                <p class="section-subtitle">Select the vegetable you intend to plant:</p>
+                <p class="section-subtitle desktop-only-subtitle">Select the vegetable you intend to plant:</p>
+                <p class="section-subtitle mobile-only-subtitle">Tap a crop from the list:</p>
                 
-                <!-- Mobile Dropdown (visible only on mobile) -->
-                <div class="mobile-vegetable-select">
-                  <div class="form-group">
-                    <label for="vegetable-select-mobile">Select Vegetable</label>
-                    <div class="input-wrapper">
-                      <i data-lucide="leaf" class="input-icon"></i>
-                      <select id="vegetable-select-mobile">
-                        <option value="">-- Choose a vegetable --</option>
-                        <!-- JS dynamically populates this -->
-                      </select>
-                    </div>
-                  </div>
-                </div>
+                <!-- Mobile: compact text list (no chip boxes) -->
+                <ul class="vegetable-simple-list mobile-vegetable-select" id="vegetable-list-mobile" role="listbox" aria-label="Select vegetable crop"></ul>
                 
-                <!-- Desktop Vegetable Cards Grid (hidden on mobile) -->
+                <!-- Desktop: chip grid -->
                 <div class="vegetable-chips-grid desktop-only" id="vegetables-grid">
                   <!-- JS dynamically injects cards here -->
                 </div>
@@ -1210,7 +1200,7 @@
   </div>
 
   <!-- Injecting dynamic JS files -->
-  <script src="data.js?v=4"></script>
-  <script src="app.js?v=4"></script>
+  <script src="data.js?v=5"></script>
+  <script src="app.js?v=5"></script>
 </body>
 </html>

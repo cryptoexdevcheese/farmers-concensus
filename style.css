@@ -917,14 +917,85 @@ select:disabled {
   display: none;
 }
 
+.mobile-only-subtitle {
+  display: none;
+}
+
+.desktop-only-subtitle {
+  display: block;
+}
+
 @media (max-width: 768px) {
+  .desktop-only,
   .vegetable-chips-grid {
+    display: none !important;
+  }
+
+  .desktop-only-subtitle {
     display: none;
   }
-  
+
+  .mobile-only-subtitle {
+    display: block;
+  }
+
   .mobile-vegetable-select {
     display: block;
   }
+}
+
+/* Mobile: plain word list (no chip boxes) */
+.vegetable-simple-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: min(42vh, 280px);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.vegetable-simple-list li {
+  padding: 11px 2px;
+  border-bottom: 1px solid var(--color-border);
+  cursor: pointer;
+  font-size: 0.95rem;
+  line-height: 1.35;
+  color: var(--color-text-primary);
+  background: transparent;
+  border-radius: 0;
+  transition: color 0.15s ease;
+}
+
+.vegetable-simple-list li:last-child {
+  border-bottom: none;
+}
+
+.vegetable-simple-list li .veg-list-tag {
+  display: block;
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+  font-weight: 400;
+  margin-top: 2px;
+}
+
+.vegetable-simple-list li:hover {
+  color: var(--color-primary);
+}
+
+.vegetable-simple-list li.selected {
+  color: var(--color-primary);
+  font-weight: 600;
+}
+
+.vegetable-simple-list li.selected .veg-list-tag {
+  color: var(--color-primary);
+  opacity: 0.85;
+}
+
+#vegetable-crop-section.invalid .vegetable-simple-list {
+  outline: 1px solid var(--color-error, #ef4444);
+  outline-offset: 4px;
+  border-radius: var(--border-radius-sm);
 }
 
 .veg-chip {

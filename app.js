@@ -428,76 +428,74 @@ const app = {
     });
   },
 
-  // Render Vegetable Chips dynamically
-  renderVegetableChips() {
-    const grid = document.getElementById("vegetables-grid");
-    grid.innerHTML = "";
-
-    // Populate desktop grid
-    window.VEGETABLES.forEach(veg => {
-      const chip = document.createElement("div");
-      chip.className = "veg-chip";
-      chip.setAttribute("data-veg-id", veg.id);
-      chip.style.setProperty("--chip-color", veg.color);
-
-      chip.innerHTML = `
-        <div class="veg-name">${veg.name}</div>
-        <div class="veg-tag">${veg.tag}</div>
-      `;
-
-      chip.addEventListener("click", () => {
-        this.selectVegetableChip(veg.id);
-      });
-
-      grid.appendChild(chip);
-    });
-
-    // Populate mobile dropdown
-    const mobileSelect = document.getElementById("vegetable-select-mobile");
-    if (mobileSelect) {
-      mobileSelect.innerHTML = '<option value="">-- Choose a vegetable --</option>';
-      window.VEGETABLES.forEach(veg => {
-        const option = document.createElement("option");
-        option.value = veg.id;
-        option.textContent = `${veg.emoji} ${veg.name} (${veg.tag})`;
-        mobileSelect.appendChild(option);
-      });
-
-      // Add change handler for mobile dropdown
-      mobileSelect.addEventListener("change", (e) => {
-        this.selectVegetableChip(e.target.value);
-      });
-    }
+  getVegetableSectionEl() {
+    return document.getElementById("vegetable-crop-section");
   },
 
-  // Select a Vegetable Chip
-  selectVegetableChip(vegId) {
-    const chips = document.querySelectorAll(".veg-chip");
-    chips.forEach(c => c.classList.remove("selected"));
+  clearVegetableSectionInvalid() {
+    const section = this.getVegetableSectionEl();
+    if (section) section.classList.remove("invalid");
+  },
 
-    const targetChip = document.querySelector(`.veg-chip[data-veg-id="${vegId}"]`);
-    if (targetChip) {
-      targetChip.classList.add("selected");
-      this.selectedVegetableId = vegId;
-      document.getElementById("selected-vegetable-id").value = vegId;
+  // Desktop chips + mobile plain text list
+  renderVegetableChips() {
+    const grid = document.getElementById("vegetables-grid");
+    const mobileList = document.getElementById("vegetable-list-mobile");
+    if (grid) grid.innerHTML = "";
+    if (mobileList) mobileList.innerHTML = "";
 
-      // Clear error formatting if any
-      document.getElementById("vegetables-grid").parentElement.classList.remove("invalid");
-
-      // Handle "Other Vegetables" selection
-      const customVegetableRow = document.getElementById("custom-vegetable-row");
-      const customVegetableInput = document.getElementById("custom-vegetable-name");
-      
-      if (vegId === "other") {
-        customVegetableRow.classList.remove("hidden");
-        customVegetableInput.required = true;
-        customVegetableInput.focus();
-      } else {
-        customVegetableRow.classList.add("hidden");
-        customVegetableInput.required = false;
-        customVegetableInput.value = "";
-        customVegetableInput.parentElement.classList.remove("invalid");
+    window.VEGETABLES.forEach((veg) => {
+      if (grid) {
+        const chip = document.createElement("div");
+        chip.className = "veg-chip";
+        chip.setAttribute("data-veg-id", veg.id);
+        chip.style.setProperty("--chip-color", veg.color);
+        chip.innerHTML = `
+          <div class="veg-name">${veg.name}</div>
+          <div class="veg-tag">${veg.tag}</div>
+        `;
+        chip.addEventListener("click", () => this.selectVegetableChip(veg.id));
+        grid.appendChild(chip);
       }
+
+      if (mobileList) {
+        const item = document.createElement("li");
+        item.setAttribute("data-veg-id", veg.id);
+        item.setAttribute("role", "option");
+        item.innerHTML = `${veg.name}<span class="veg-list-tag">${veg.tag}</span>`;
+        item.addEventListener("click", () => this.selectVegetableChip(veg.id));
+        mobileList.appendChild(item);
+      }
+    });
+  },
+
+  selectVegetableChip(vegId) {
+    if (!vegId) return;
+
+    document.querySelectorAll(".veg-chip").forEach((c) => c.classList.remove("selected"));
+    const targetChip = document.querySelector(`.veg-chip[data-veg-id="${vegId}"]`);
+    if (targetChip) targetChip.classList.add("selected");
+
+    document.querySelectorAll("#vegetable-list-mobile li").forEach((li) => {
+      li.classList.toggle("selected", li.getAttribute("data-veg-id") === vegId);
+    });
+
+    this.selectedVegetableId = vegId;
+    document.getElementById("selected-vegetable-id").value = vegId;
+    this.clearVegetableSectionInvalid();
+
+    const customVegetableRow = document.getElementById("custom-vegetable-row");
+    const customVegetableInput = document.getElementById("custom-vegetable-name");
+
+    if (vegId === "other") {
+      customVegetableRow.classList.remove("hidden");
+      customVegetableInput.required = true;
+      customVegetableInput.focus();
+    } else {
+      customVegetableRow.classList.add("hidden");
+      customVegetableInput.required = false;
+      customVegetableInput.value = "";
+      customVegetableInput.parentElement.classList.remove("invalid");
     }
 
     this.updateEstimator();
@@ -637,12 +635,13 @@ const app = {
         document.getElementById("custom-barangay").parentElement.parentElement.classList.remove("invalid");
       }
 
-      // Validate Selected Crop Chip
+      // Validate selected crop
       if (!this.selectedVegetableId) {
-        document.getElementById("vegetables-grid").parentElement.classList.add("invalid");
+        const vegSection = this.getVegetableSectionEl();
+        if (vegSection) vegSection.classList.add("invalid");
         isValid = false;
       } else {
-        document.getElementById("vegetables-grid").parentElement.classList.remove("invalid");
+        this.clearVegetableSectionInvalid();
         
         // Validate custom vegetable name if "other" is selected
         if (this.selectedVegetableId === "other") {
