@@ -782,7 +782,51 @@ p {
   color: var(--color-danger);
 }
 
-/* Wrapper with Input Icon — grid keeps icon out of the text area */
+/* No icons inside text/select fields — plain full-width inputs only */
+#consensus-form .form-group > input,
+#consensus-form .form-group > select,
+#consensus-form .input-group-united > input,
+#consensus-form .input-group-united > select,
+.auth-form .form-group > input,
+.auth-form .form-group > select {
+  padding-left: 16px !important;
+  padding-right: 16px !important;
+}
+
+/* Hide any leftover icons inside field boxes (e.g. cached older HTML) */
+#consensus-form .input-wrapper .input-icon,
+#consensus-form .input-wrapper > i,
+#consensus-form .input-wrapper > svg,
+.auth-form .input-wrapper .input-icon,
+.auth-form .input-wrapper > i,
+.auth-form .input-wrapper > svg {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+#consensus-form .input-wrapper,
+.auth-form .input-wrapper {
+  display: block !important;
+  grid-template-columns: none !important;
+  min-height: unset !important;
+}
+
+#consensus-form .input-wrapper input,
+#consensus-form .input-wrapper select,
+.auth-form .input-wrapper input,
+.auth-form .input-wrapper select {
+  width: 100% !important;
+  padding: 12px 16px !important;
+  border: 1px solid var(--color-border) !important;
+  border-radius: var(--border-radius-sm) !important;
+  background-color: var(--color-bg-input) !important;
+  box-shadow: none !important;
+}
+
+/* Wrapper with Input Icon — legacy; icons disabled above */
 .input-wrapper {
   display: grid;
   grid-template-columns: 2.75rem minmax(0, 1fr);
