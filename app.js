@@ -723,7 +723,8 @@ const app = {
         expectedYieldTons: Math.round(expectedYieldTons * 100) / 100,
         plantingDate: plantingDateInput.value,
         harvestDate: hDate.toISOString().split("T")[0],
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        verificationStatus: 'Pending'
       };
 
       // Save registry details to state
@@ -916,54 +917,115 @@ const app = {
     this.initProvinceFilters();
   },
 
-  // Initialize Province Filter Dropdowns
-  initProvinceFilters() {
-    // Get unique provinces from registrations
-    const provinces = [...new Set(this.registrations.map(r => r.province))].sort();
+  // Initialize Province & Municipality Filter Dropdowns for charts
+  async initProvinceFilters() {
+    const cropShareProv = document.getElementById("crop-share-province-filter");
+    const cropShareMun = document.getElementById("crop-share-municipality-filter");
     
-    // Populate Crop Share Profile province filter
-    const cropShareFilter = document.getElementById("crop-share-province-filter");
-    provinces.forEach(province => {
-      const option = document.createElement("option");
-      option.value = province;
-      option.textContent = province;
-      cropShareFilter.appendChild(option);
-    });
+    const intensityProv = document.getElementById("intensity-province-filter");
+    const intensityMun = document.getElementById("intensity-municipality-filter");
+    
+    const timelineProv = document.getElementById("timeline-province-filter");
+    const timelineMun = document.getElementById("timeline-municipality-filter");
 
-    // Populate Supply Timeline Planner province filter
-    const timelineFilter = document.getElementById("timeline-province-filter");
-    provinces.forEach(province => {
-      const option = document.createElement("option");
-      option.value = province;
-      option.textContent = province;
-      timelineFilter.appendChild(option);
-    });
+    // Load all provinces dynamically from PSGC
+    try {
+      await Promise.all([
+        this.loadAllProvincesIntoSelect(cropShareProv, "All Provinces"),
+        this.loadAllProvincesIntoSelect(intensityProv, "All Provinces"),
+        this.loadAllProvincesIntoSelect(timelineProv, "All Provinces")
+      ]);
+    } catch (e) {
+      console.warn("Failed to load provinces for chart filters", e.message);
+    }
 
-    // Add event listeners for filtering
-    cropShareFilter.addEventListener("change", () => {
-      this.updateCharts();
-    });
+    // Set change listeners to fetch municipalities dynamically and refresh charts
+    if (cropShareProv && cropShareMun) {
+      cropShareProv.addEventListener("change", () => {
+        this.handleProvinceFilterChange(cropShareProv, cropShareMun, () => this.updateCharts());
+      });
+      cropShareMun.addEventListener("change", () => {
+        this.updateCharts();
+      });
+    }
 
-    timelineFilter.addEventListener("change", () => {
-      this.updateCharts();
-    });
+    if (intensityProv && intensityMun) {
+      intensityProv.addEventListener("change", () => {
+        this.handleProvinceFilterChange(intensityProv, intensityMun, () => this.updateCharts());
+      });
+      intensityMun.addEventListener("change", () => {
+        this.updateCharts();
+      });
+    }
+
+    if (timelineProv && timelineMun) {
+      timelineProv.addEventListener("change", () => {
+        this.handleProvinceFilterChange(timelineProv, timelineMun, () => this.updateCharts());
+      });
+      timelineMun.addEventListener("change", () => {
+        this.updateCharts();
+      });
+    }
+  },
+
+  // Dynamic geographic filter helper for charts
+  async handleProvinceFilterChange(provSelect, munSelect, onFilterUpdate) {
+    const selected = provSelect.selectedOptions[0];
+    
+    // Clear and disable municipality
+    munSelect.innerHTML = '<option value="">All Municipalities</option>';
+    munSelect.disabled = true;
+    
+    if (!selected || selected.value === "" || selected.value === "all") {
+      onFilterUpdate();
+      return;
+    }
+    
+    munSelect.innerHTML = '<option value="">Loading...</option>';
+    try {
+      const { regCode, provCode } = selected.dataset;
+      if (regCode && provCode) {
+        const municipalities = await this.fetchGeoJson(
+          `/api/geo/municipalities?regCode=${encodeURIComponent(regCode)}&provCode=${encodeURIComponent(provCode)}`
+        );
+        this.fillSelectOptions(
+          munSelect,
+          "All Municipalities",
+          municipalities,
+          (m) => m.name,
+          (m) => m.name
+        );
+        munSelect.disabled = false;
+        munSelect.value = "";
+      }
+    } catch (err) {
+      console.error("Failed to load filter municipalities:", err);
+      munSelect.innerHTML = '<option value="">Error loading</option>';
+    }
+    onFilterUpdate();
   },
 
   // Refresh Chart.js canvases with current state values
   updateCharts() {
     if (!this.charts.cropShare || !this.charts.provinceIntensity || !this.charts.timeline) return;
 
-    // Get selected province filters
+    // Get selected province/municipality filters
     const cropShareProvince = document.getElementById("crop-share-province-filter").value;
+    const cropShareMunicipality = document.getElementById("crop-share-municipality-filter").value;
+
+    const intensityProvince = document.getElementById("intensity-province-filter") ? document.getElementById("intensity-province-filter").value : "";
+    const intensityMunicipality = document.getElementById("intensity-municipality-filter") ? document.getElementById("intensity-municipality-filter").value : "";
+
     const timelineProvince = document.getElementById("timeline-province-filter").value;
+    const timelineMunicipality = document.getElementById("timeline-municipality-filter").value;
 
     // Redraw Crop Share Doughnut
-    this.charts.cropShare.data = this.getCropShareData(cropShareProvince);
+    this.charts.cropShare.data = this.getCropShareData(cropShareProvince, cropShareMunicipality);
     this.charts.cropShare.options.plugins.legend.labels.color = this.theme === "dark" ? "#a7f3d0" : "#3b5245";
     this.charts.cropShare.update();
 
     // Redraw Province Bar Chart
-    this.charts.provinceIntensity.data = this.getProvinceIntensityData();
+    this.charts.provinceIntensity.data = this.getProvinceIntensityData(intensityProvince, intensityMunicipality);
     this.charts.provinceIntensity.options.scales.x.grid.color = this.theme === "dark" ? "rgba(52, 211, 153, 0.08)" : "rgba(16, 185, 129, 0.08)";
     this.charts.provinceIntensity.options.scales.x.ticks.color = this.theme === "dark" ? "#a7f3d0" : "#3b5245";
     this.charts.provinceIntensity.options.scales.y.ticks.color = this.theme === "dark" ? "#a7f3d0" : "#3b5245";
@@ -971,7 +1033,7 @@ const app = {
     this.charts.provinceIntensity.update();
 
     // Redraw Supply Timeline
-    this.charts.timeline.data = this.getTimelineData(timelineProvince);
+    this.charts.timeline.data = this.getTimelineData(timelineProvince, timelineMunicipality);
     this.charts.timeline.options.scales.x.ticks.color = this.theme === "dark" ? "#a7f3d0" : "#3b5245";
     this.charts.timeline.options.scales.y.ticks.color = this.theme === "dark" ? "#a7f3d0" : "#3b5245";
     this.charts.timeline.options.scales.y.grid.color = this.theme === "dark" ? "rgba(52, 211, 153, 0.08)" : "rgba(16, 185, 129, 0.08)";
@@ -981,13 +1043,15 @@ const app = {
   },
 
   // Dynamic calculations for Crop Share doughnut
-  getCropShareData(provinceFilter = "all") {
+  getCropShareData(provinceFilter = "", municipalityFilter = "") {
     const cropAreas = {};
     window.VEGETABLES.forEach(v => cropAreas[v.id] = 0);
 
-    const filteredRegistrations = provinceFilter === "all" 
-      ? this.registrations 
-      : this.registrations.filter(r => r.province === provinceFilter);
+    const filteredRegistrations = this.registrations.filter(r => {
+      const matchesProvince = !provinceFilter || provinceFilter === "all" || r.province === provinceFilter;
+      const matchesMunicipality = !municipalityFilter || municipalityFilter === "all" || r.municipality === municipalityFilter;
+      return matchesProvince && matchesMunicipality;
+    });
 
     filteredRegistrations.forEach(r => {
       if (cropAreas[r.vegetableId] !== undefined) {
@@ -1007,7 +1071,6 @@ const app = {
       }
     });
 
-    // In case there's no data
     if (data.length === 0) {
       labels.push("No Active Registries");
       data.push(0);
@@ -1026,18 +1089,31 @@ const app = {
   },
 
   // Dynamic calculations for Province Horizontal Bar
-  getProvinceIntensityData() {
-    const provinceAreas = {};
+  getProvinceIntensityData(provinceFilter = "", municipalityFilter = "") {
+    const locationAreas = {};
 
-    this.registrations.forEach(r => {
-      provinceAreas[r.province] = (provinceAreas[r.province] || 0) + r.areaHa;
+    const filteredRegistrations = this.registrations.filter(r => {
+      const matchesProvince = !provinceFilter || provinceFilter === "all" || r.province === provinceFilter;
+      const matchesMunicipality = !municipalityFilter || municipalityFilter === "all" || r.municipality === municipalityFilter;
+      return matchesProvince && matchesMunicipality;
     });
 
-    const sortedProvinces = Object.keys(provinceAreas).sort((a, b) => provinceAreas[b] - provinceAreas[a]);
-    const datasetsData = sortedProvinces.map(p => provinceAreas[p]);
+    filteredRegistrations.forEach(r => {
+      let key = r.province;
+      if (provinceFilter && provinceFilter !== "all") {
+        key = r.municipality;
+        if (municipalityFilter && municipalityFilter !== "all") {
+          key = r.barangay;
+        }
+      }
+      locationAreas[key] = (locationAreas[key] || 0) + r.areaHa;
+    });
+
+    const sortedLocations = Object.keys(locationAreas).sort((a, b) => locationAreas[b] - locationAreas[a]);
+    const datasetsData = sortedLocations.map(loc => locationAreas[loc]);
 
     return {
-      labels: sortedProvinces,
+      labels: sortedLocations,
       datasets: [{
         data: datasetsData,
         backgroundColor: this.theme === "dark" ? "rgba(16, 185, 129, 0.75)" : "rgba(16, 185, 129, 0.8)",
@@ -1049,11 +1125,10 @@ const app = {
   },
 
   // Dynamic calculations for Timeline Line chart (Expected Harvest Months)
-  getTimelineData(provinceFilter = "all") {
+  getTimelineData(provinceFilter = "", municipalityFilter = "") {
     const monthlyYields = {};
     const monthsKeys = [];
 
-    // Form list of next 6 months
     const today = new Date();
     const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
@@ -1068,16 +1143,17 @@ const app = {
       });
     }
 
-    const filteredRegistrations = provinceFilter === "all" 
-      ? this.registrations 
-      : this.registrations.filter(r => r.province === provinceFilter);
+    const filteredRegistrations = this.registrations.filter(r => {
+      const matchesProvince = !provinceFilter || provinceFilter === "all" || r.province === provinceFilter;
+      const matchesMunicipality = !municipalityFilter || municipalityFilter === "all" || r.municipality === municipalityFilter;
+      return matchesProvince && matchesMunicipality;
+    });
 
     filteredRegistrations.forEach(r => {
       const hDate = new Date(r.harvestDate);
       const hYear = hDate.getFullYear();
       const hMonth = hDate.getMonth();
 
-      // Find matching index inside next 6 months list
       const match = monthsKeys.find(m => m.year === hYear && m.month === hMonth);
       if (match) {
         monthlyYields[match.label] += r.expectedYieldTons;
@@ -1087,7 +1163,6 @@ const app = {
     const labels = monthsKeys.map(m => m.label);
     const data = labels.map(l => monthlyYields[l]);
 
-    const greenGradient = Chart.defaults.color; // Backup standard color
     return {
       labels: labels,
       datasets: [{
@@ -1201,11 +1276,36 @@ const app = {
       const opt = { year: "numeric", month: "short", day: "numeric" };
       const hDateFormatted = new Date(r.harvestDate).toLocaleDateString("en-US", opt);
 
+      const status = r.verificationStatus || 'Pending';
+      let statusBadge = '';
+      if (status === 'Geo-Verified') {
+        statusBadge = `
+          <span class="status-badge geo-verified" style="background-color: rgba(59, 130, 246, 0.1); color: #3b82f6; border: 1px solid rgba(59, 130, 246, 0.3); display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 6px; font-size: 0.85rem; font-weight: 500;">
+            <i data-lucide="map-pin" style="width: 14px; height: 14px;"></i>
+            <span>Geo-Verified</span>
+          </span>
+        `;
+      } else if (status === 'Oracle Confirmed') {
+        statusBadge = `
+          <span class="status-badge oracle-confirmed" style="background-color: rgba(16, 185, 129, 0.1); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3); display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 6px; font-size: 0.85rem; font-weight: 500;">
+            <i data-lucide="shield-check" style="width: 14px; height: 14px;"></i>
+            <span>Oracle Confirmed</span>
+          </span>
+        `;
+      } else {
+        statusBadge = `
+          <span class="status-badge pending" style="background-color: rgba(245, 158, 11, 0.1); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.3); display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 6px; font-size: 0.85rem; font-weight: 500;">
+            <i data-lucide="clock" style="width: 14px; height: 14px;"></i>
+            <span>Pending</span>
+          </span>
+        `;
+      }
+
       row.innerHTML = `
         <td data-label="ID"><span class="registry-id">${r.id}</span></td>
         <td data-label="Farmer">
-          <span class="farmer-main">${r.farmerName}</span>
-          <span class="farmer-sub"><i data-lucide="phone" style="width:10px; height:10px; display:inline-block; margin-right:4px;"></i>${r.contact}</span>
+          <span class="farmer-main">${r.farmerName.split(' ')[0]}</span>
+          <span class="farmer-sub"><i data-lucide="phone" style="width:10px; height:10px; display:inline-block; margin-right:4px;"></i>${r.contact.substring(0, 4) + '****' + r.contact.substring(r.contact.length - 3)}</span>
         </td>
         <td data-label="Location">
           <span class="farmer-main">${r.barangay}, ${r.municipality}</span>
@@ -1226,6 +1326,9 @@ const app = {
         <td data-label="Harvest">
           <span class="farmer-main">${hDateFormatted}</span>
           <span class="farmer-sub">${veg.maturationDays} days growth</span>
+        </td>
+        <td data-label="Verification">
+          ${statusBadge}
         </td>
       `;
 
@@ -1811,6 +1914,12 @@ const app = {
       loginForm.addEventListener('submit', (e) => this.handleLogin(e));
     }
     
+    // Forgot password form handler
+    const forgotPasswordForm = document.getElementById('forgot-password-form');
+    if (forgotPasswordForm) {
+      forgotPasswordForm.addEventListener('submit', (e) => this.handleForgotPassword(e));
+    }
+    
     // Modal handlers
     this.initModalHandlers();
   },
@@ -1843,6 +1952,28 @@ const app = {
     const closeProfileModal = document.getElementById('close-profile-modal');
     if (closeProfileModal) {
       closeProfileModal.addEventListener('click', () => this.closeModal('profile-modal'));
+    }
+
+    // Forgot Password modal triggers
+    const forgotPasswordBtn = document.getElementById('forgot-password-btn');
+    if (forgotPasswordBtn) {
+      forgotPasswordBtn.addEventListener('click', () => {
+        this.closeModal('login-modal');
+        this.openModal('forgot-password-modal');
+      });
+    }
+
+    const closeForgotPasswordModal = document.getElementById('close-forgot-password-modal');
+    if (closeForgotPasswordModal) {
+      closeForgotPasswordModal.addEventListener('click', () => this.closeModal('forgot-password-modal'));
+    }
+
+    const forgotBackToLogin = document.getElementById('forgot-back-to-login');
+    if (forgotBackToLogin) {
+      forgotBackToLogin.addEventListener('click', () => {
+        this.closeModal('forgot-password-modal');
+        this.openModal('login-modal');
+      });
     }
     
     // Switch between login and register
@@ -2105,6 +2236,36 @@ const app = {
     } catch (error) {
       console.error('Login error:', error);
       this.showNotification('Login failed. Please try again.', 'error');
+    }
+  },
+
+  // Handle forgot password request
+  async handleForgotPassword(event) {
+    event.preventDefault();
+    
+    const form = event.target;
+    const formData = new FormData(form);
+    const email = formData.get('email');
+    
+    try {
+      const response = await fetch('/api/auth/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email })
+      });
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        this.closeModal('forgot-password-modal');
+        this.showNotification(result.message || 'Password reset instructions sent to your email.', 'success');
+        form.reset();
+      } else {
+        this.showNotification(result.error || 'Failed to request password reset', 'error');
+      }
+    } catch (error) {
+      console.error('Forgot password error:', error);
+      this.showNotification('An error occurred. Please try again.', 'error');
     }
   },
 

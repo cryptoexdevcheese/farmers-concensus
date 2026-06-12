@@ -172,6 +172,43 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Crop Registrations & Verification Console -->
+            <div class="revenue-dashboard card animate-fade-in" style="margin-top: 24px;">
+                <div class="card-header">
+                    <div class="card-title-icon green" style="background-color: rgba(16, 185, 129, 0.1); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.2); width: 42px; height: 42px; display: flex; align-items: center; justify-content: center; border-radius: 10px;">
+                        <i data-lucide="shield-check"></i>
+                    </div>
+                    <div>
+                        <h3>🛡️ Crop Registrations & Verification Console</h3>
+                        <p>Review raw records (PII visible to admins) and manage verification status</p>
+                    </div>
+                </div>
+
+                <div class="table-scroll-container" style="margin-top: 16px;">
+                    <table class="ledger-table">
+                        <thead>
+                            <tr>
+                                <th>Registry ID</th>
+                                <th>Farmer Name</th>
+                                <th>Contact Number</th>
+                                <th>Location</th>
+                                <th>Crop</th>
+                                <th>Area & Yield</th>
+                                <th>Verification Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="admin-ledger-tbody">
+                            <tr>
+                                <td colspan="8" style="text-align: center; color: var(--color-text-muted); padding: 36px 0;">
+                                    Loading crop registrations...
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </div>
     </div>
 

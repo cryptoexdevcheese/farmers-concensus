@@ -42,6 +42,7 @@ function showAdminDashboard() {
     document.getElementById('admin-login-section').classList.add('hidden');
     document.getElementById('admin-dashboard-section').classList.remove('hidden');
     initRevenueDashboard();
+    initAdminLedger();
 }
 
 // Initialize admin login form
@@ -227,3 +228,159 @@ function preventInputZoom() {
         });
     }
 }
+
+// ===== CROP REGISTRATION & VERIFICATION CONSOLE =====
+let adminRegistrations = [];
+
+async function initAdminLedger() {
+    await fetchAdminRegistrations();
+}
+
+async function fetchAdminRegistrations() {
+    try {
+        const response = await fetch('/api/farmers/registrations');
+        const result = await response.json();
+        if (result.success) {
+            adminRegistrations = result.registrations;
+            renderAdminLedgerTable();
+        } else {
+            console.error('Failed to load admin registrations:', result.error);
+        }
+    } catch (error) {
+        console.error('Error fetching admin registrations:', error);
+    }
+}
+
+function renderAdminLedgerTable() {
+    const tbody = document.getElementById('admin-ledger-tbody');
+    if (!tbody) return;
+    
+    if (adminRegistrations.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="8" style="text-align: center; color: var(--color-text-muted); padding: 36px 0; font-style: italic;">
+                    No crop registrations found.
+                </td>
+            </tr>
+        `;
+        return;
+    }
+
+    tbody.innerHTML = adminRegistrations.map(r => {
+        const status = r.verificationStatus || 'Pending';
+        
+        let statusBadge = '';
+        if (status === 'Geo-Verified') {
+            statusBadge = `
+                <span class="status-badge geo-verified" style="background-color: rgba(59, 130, 246, 0.1); color: #3b82f6; border: 1px solid rgba(59, 130, 246, 0.3); display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 6px; font-size: 0.85rem; font-weight: 500;">
+                    <i data-lucide="map-pin" style="width: 14px; height: 14px;"></i>
+                    <span>Geo-Verified</span>
+                </span>
+            `;
+        } else if (status === 'Oracle Confirmed') {
+            statusBadge = `
+                <span class="status-badge oracle-confirmed" style="background-color: rgba(16, 185, 129, 0.1); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3); display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 6px; font-size: 0.85rem; font-weight: 500;">
+                    <i data-lucide="shield-check" style="width: 14px; height: 14px;"></i>
+                    <span>Oracle Confirmed</span>
+                </span>
+            `;
+        } else {
+            statusBadge = `
+                <span class="status-badge pending" style="background-color: rgba(245, 158, 11, 0.1); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.3); display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 6px; font-size: 0.85rem; font-weight: 500;">
+                    <i data-lucide="clock" style="width: 14px; height: 14px;"></i>
+                    <span>Pending</span>
+                </span>
+            `;
+        }
+
+        let actionButtons = '';
+        if (status === 'Pending') {
+            actionButtons = `
+                <div style="display: flex; gap: 8px;">
+                    <button class="btn-secondary btn-sm" onclick="verifyRegistration('${r.id}', 'Geo-Verified')" style="padding: 4px 8px; font-size: 0.8rem; border-radius: 6px; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;">
+                        <i data-lucide="map-pin" style="width: 12px; height: 12px;"></i>
+                        <span>Geo-Verify</span>
+                    </button>
+                    <button class="btn-primary btn-sm" onclick="verifyRegistration('${r.id}', 'Oracle Confirmed')" style="padding: 4px 8px; font-size: 0.8rem; border-radius: 6px; display: inline-flex; align-items: center; gap: 4px; background: var(--color-primary); cursor: pointer;">
+                        <i data-lucide="shield-check" style="width: 12px; height: 12px;"></i>
+                        <span>Confirm</span>
+                    </button>
+                </div>
+            `;
+        } else if (status === 'Geo-Verified') {
+            actionButtons = `
+                <button class="btn-primary btn-sm" onclick="verifyRegistration('${r.id}', 'Oracle Confirmed')" style="padding: 4px 8px; font-size: 0.8rem; border-radius: 6px; display: inline-flex; align-items: center; gap: 4px; background: var(--color-primary); cursor: pointer;">
+                    <i data-lucide="shield-check" style="width: 12px; height: 12px;"></i>
+                    <span>Oracle Confirm</span>
+                </button>
+            `;
+        } else {
+            actionButtons = `<span style="color: var(--color-text-muted); font-size: 0.85rem;">No actions</span>`;
+        }
+
+        const areaHa = parseFloat(r.areaHa) || 0;
+        const yieldTons = parseFloat(r.expectedYieldTons) || 0;
+
+        return `
+            <tr>
+                <td data-label="Registry ID"><span class="registry-id">${r.id}</span></td>
+                <td data-label="Farmer Name"><strong style="color: var(--color-text-primary); font-weight: 600;">${r.farmerName}</strong></td>
+                <td data-label="Contact Number"><code style="font-family: monospace; font-size: 0.9rem; color: #10b981; background: rgba(16, 185, 129, 0.1); padding: 2px 6px; border-radius: 4px;">${r.contact}</code></td>
+                <td data-label="Location">
+                    <div>${r.barangay}, ${r.municipality}</div>
+                    <div style="font-size: 0.8rem; color: var(--color-text-secondary);">${r.province}</div>
+                </td>
+                <td data-label="Crop">
+                    <span style="font-weight: 500;">${r.vegetableId.toUpperCase()}</span>
+                </td>
+                <td data-label="Area & Yield">
+                    <div>${areaHa.toFixed(2)} ha</div>
+                    <div style="font-size: 0.8rem; color: var(--color-text-secondary);">${yieldTons.toFixed(2)} Tons</div>
+                </td>
+                <td data-label="Verification Status">
+                    ${statusBadge}
+                </td>
+                <td data-label="Actions">
+                    ${actionButtons}
+                </td>
+            </tr>
+        `;
+    }).join('');
+
+    initLucide();
+}
+
+async function verifyRegistration(id, status) {
+    if (!confirm(`Are you sure you want to verify registration ${id} as ${status}?`)) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/admin/farmers/verify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id, status })
+        });
+        
+        const result = await response.json();
+        if (result.success) {
+            alert(`Registration ${id} successfully updated to ${status}`);
+            
+            // Refresh registration table
+            await fetchAdminRegistrations();
+            
+            // Refresh revenue metrics
+            const timeframeSelect = document.getElementById('revenue-timeframe');
+            const timeframe = timeframeSelect ? timeframeSelect.value : 'all';
+            await fetchRevenueAnalytics(timeframe);
+        } else {
+            alert(`Failed to verify: ${result.error}`);
+        }
+    } catch (error) {
+        console.error('Error verifying registration:', error);
+        alert('An error occurred during verification.');
+    }
+}
+
+// Bind to window for inline onclick handlers
+window.verifyRegistration = verifyRegistration;
