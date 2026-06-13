@@ -17,7 +17,7 @@ function initLucide() {
 // Check if admin is logged in
 async function checkAdminSession() {
     try {
-        const response = await fetch('/api/admin/check');
+        const response = await fetch('/api/admin/check', { credentials: 'same-origin' });
         const result = await response.json();
         
         if (result.isAdmin) {
@@ -58,7 +58,8 @@ function initAdminLogin() {
             const response = await fetch('/api/admin/login', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username, password })
+                body: JSON.stringify({ username, password }),
+                credentials: 'same-origin'
             });
             
             const result = await response.json();
@@ -91,7 +92,7 @@ function initAdminLogout() {
     if (logoutBtn) {
         logoutBtn.addEventListener('click', async () => {
             try {
-                await fetch('/api/admin/logout', { method: 'POST' });
+                await fetch('/api/admin/logout', { method: 'POST', credentials: 'same-origin' });
                 showAdminLogin();
             } catch (error) {
                 console.error('Logout failed:', error);
@@ -103,7 +104,7 @@ function initAdminLogout() {
 // Revenue Dashboard Functions
 async function fetchRevenueAnalytics(timeframe = 'all') {
     try {
-        const response = await fetch(`/api/revenue/analytics?timeframe=${timeframe}`);
+        const response = await fetch(`/api/revenue/analytics?timeframe=${timeframe}`, { credentials: 'same-origin' });
         const result = await response.json();
         
         if (result.success) {
@@ -238,7 +239,7 @@ async function initAdminLedger() {
 
 async function fetchAdminRegistrations() {
     try {
-        const response = await fetch('/api/farmers/registrations');
+        const response = await fetch('/api/farmers/registrations', { credentials: 'same-origin' });
         const result = await response.json();
         if (result.success) {
             adminRegistrations = result.registrations;
@@ -284,6 +285,13 @@ function renderAdminLedgerTable() {
                     <span>Oracle Confirmed</span>
                 </span>
             `;
+        } else if (status === 'Cancelled') {
+            statusBadge = `
+                <span class="status-badge cancelled" style="background-color: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3); display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 6px; font-size: 0.85rem; font-weight: 500;">
+                    <i data-lucide="x-circle" style="width: 14px; height: 14px;"></i>
+                    <span>Cancelled</span>
+                </span>
+            `;
         } else {
             statusBadge = `
                 <span class="status-badge pending" style="background-color: rgba(245, 158, 11, 0.1); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.3); display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 6px; font-size: 0.85rem; font-weight: 500;">
@@ -296,7 +304,7 @@ function renderAdminLedgerTable() {
         let actionButtons = '';
         if (status === 'Pending') {
             actionButtons = `
-                <div style="display: flex; gap: 8px;">
+                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
                     <button class="btn-secondary btn-sm" onclick="verifyRegistration('${r.id}', 'Geo-Verified')" style="padding: 4px 8px; font-size: 0.8rem; border-radius: 6px; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;">
                         <i data-lucide="map-pin" style="width: 12px; height: 12px;"></i>
                         <span>Geo-Verify</span>
@@ -305,14 +313,24 @@ function renderAdminLedgerTable() {
                         <i data-lucide="shield-check" style="width: 12px; height: 12px;"></i>
                         <span>Confirm</span>
                     </button>
+                    <button class="btn-danger btn-sm" onclick="cancelRegistration('${r.id}')" style="padding: 4px 8px; font-size: 0.8rem; border-radius: 6px; display: inline-flex; align-items: center; gap: 4px; background: rgba(239, 68, 68, 0.15); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3); cursor: pointer;">
+                        <i data-lucide="x-circle" style="width: 12px; height: 12px;"></i>
+                        <span>Cancel</span>
+                    </button>
                 </div>
             `;
         } else if (status === 'Geo-Verified') {
             actionButtons = `
-                <button class="btn-primary btn-sm" onclick="verifyRegistration('${r.id}', 'Oracle Confirmed')" style="padding: 4px 8px; font-size: 0.8rem; border-radius: 6px; display: inline-flex; align-items: center; gap: 4px; background: var(--color-primary); cursor: pointer;">
-                    <i data-lucide="shield-check" style="width: 12px; height: 12px;"></i>
-                    <span>Oracle Confirm</span>
-                </button>
+                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                    <button class="btn-primary btn-sm" onclick="verifyRegistration('${r.id}', 'Oracle Confirmed')" style="padding: 4px 8px; font-size: 0.8rem; border-radius: 6px; display: inline-flex; align-items: center; gap: 4px; background: var(--color-primary); cursor: pointer;">
+                        <i data-lucide="shield-check" style="width: 12px; height: 12px;"></i>
+                        <span>Oracle Confirm</span>
+                    </button>
+                    <button class="btn-danger btn-sm" onclick="cancelRegistration('${r.id}')" style="padding: 4px 8px; font-size: 0.8rem; border-radius: 6px; display: inline-flex; align-items: center; gap: 4px; background: rgba(239, 68, 68, 0.15); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3); cursor: pointer;">
+                        <i data-lucide="x-circle" style="width: 12px; height: 12px;"></i>
+                        <span>Cancel</span>
+                    </button>
+                </div>
             `;
         } else {
             actionButtons = `<span style="color: var(--color-text-muted); font-size: 0.85rem;">No actions</span>`;
@@ -359,7 +377,8 @@ async function verifyRegistration(id, status) {
         const response = await fetch('/api/admin/farmers/verify', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id, status })
+            body: JSON.stringify({ id, status }),
+            credentials: 'same-origin'
         });
         
         const result = await response.json();
@@ -382,5 +401,40 @@ async function verifyRegistration(id, status) {
     }
 }
 
+// Cancel registration function
+async function cancelRegistration(id) {
+    if (!confirm(`Are you sure you want to CANCEL registration ${id}? This cannot be undone.`)) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/admin/farmers/verify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id, status: 'Cancelled' }),
+            credentials: 'same-origin'
+        });
+        
+        const result = await response.json();
+        if (result.success) {
+            alert(`Registration ${id} has been cancelled.`);
+            
+            // Refresh registration table
+            await fetchAdminRegistrations();
+            
+            // Refresh revenue metrics
+            const timeframeSelect = document.getElementById('revenue-timeframe');
+            const timeframe = timeframeSelect ? timeframeSelect.value : 'all';
+            await fetchRevenueAnalytics(timeframe);
+        } else {
+            alert(`Failed to cancel: ${result.error}`);
+        }
+    } catch (error) {
+        console.error('Error cancelling registration:', error);
+        alert('An error occurred while cancelling the registration.');
+    }
+}
+
 // Bind to window for inline onclick handlers
 window.verifyRegistration = verifyRegistration;
+window.cancelRegistration = cancelRegistration;

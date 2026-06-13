@@ -2,8 +2,11 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const crypto = require('crypto');
 const axios = require('axios');
 const session = require('express-session');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 const { Pool } = require('pg');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
@@ -63,6 +66,30 @@ const ADMIN_SESSION_SECRET = process.env.ADMIN_SESSION_SECRET || 'change_this_to
 // JWT Configuration for user authentication
 const JWT_SECRET = process.env.JWT_SECRET || 'change_this_to_secure_random_string_for_jwt';
 const JWT_EXPIRES_IN = '7d'; // Token expiration time
+
+// Production safety: refuse to start with default secrets
+if (process.env.NODE_ENV === 'production') {
+    const defaults = [
+        ['ADMIN_PASSWORD', ADMIN_PASSWORD, 'secure_password_change_this'],
+        ['ADMIN_SESSION_SECRET', ADMIN_SESSION_SECRET, 'change_this_to_secure_random_string'],
+        ['JWT_SECRET', JWT_SECRET, 'change_this_to_secure_random_string_for_jwt']
+    ];
+    for (const [name, value, defaultVal] of defaults) {
+        if (value === defaultVal) {
+            console.error(`❌ CRITICAL: ${name} is using default value in production. Set it in environment variables.`);
+            process.exit(1);
+        }
+    }
+}
+
+// Input sanitization helper — strips HTML tags to prevent XSS
+function sanitizeInput(str) {
+    if (typeof str !== 'string') return str;
+    return str.replace(/[<>"'&]/g, (char) => {
+        const entities = { '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#x27;', '&': '&amp;' };
+        return entities[char] || char;
+    });
+}
 
 // PostgreSQL Database Configuration
 let pool = null;
@@ -204,106 +231,6 @@ async function initializeDatabaseSchema() {
     }
 }
 
-// Helper function to split SQL statements while preserving PL/pgSQL function bodies
-function splitSQLStatements(sql) {
-    const statements = [];
-    let currentStatement = '';
-    let inDollarQuote = false;
-    let inSingleQuote = false;
-    let inDoubleQuote = false;
-    let inComment = false;
-    let inBlockComment = false;
-    
-    for (let i = 0; i < sql.length; i++) {
-        const char = sql[i];
-        const nextChar = sql[i + 1] || '';
-        
-        // Handle block comments (/* */)
-        if (!inComment && !inBlockComment && !inDollarQuote && !inSingleQuote && !inDoubleQuote) {
-            if (char === '/' && nextChar === '*') {
-                inBlockComment = true;
-                currentStatement += char + nextChar;
-                i++;
-                continue;
-            }
-        }
-        
-        if (inBlockComment) {
-            currentStatement += char;
-            if (char === '*' && nextChar === '/') {
-                inBlockComment = false;
-                currentStatement += nextChar;
-                i++;
-            }
-            continue;
-        }
-        
-        // Handle line comments (--)
-        if (!inBlockComment && !inComment && !inDollarQuote && !inSingleQuote && !inDoubleQuote) {
-            if (char === '-' && nextChar === '-') {
-                inComment = true;
-                currentStatement += char + nextChar;
-                i++;
-                continue;
-            }
-        }
-        
-        if (inComment) {
-            currentStatement += char;
-            if (char === '\n') {
-                inComment = false;
-            }
-            continue;
-        }
-        
-        // Handle dollar quotes for PL/pgSQL functions ($$)
-        if (!inSingleQuote && !inDoubleQuote && !inBlockComment && !inComment) {
-            if (char === '$' && nextChar === '$') {
-                inDollarQuote = !inDollarQuote;
-                currentStatement += char + nextChar;
-                i++;
-                continue;
-            }
-        }
-        
-        // Handle single quotes
-        if (!inDollarQuote && !inDoubleQuote && !inBlockComment && !inComment) {
-            if (char === "'") {
-                inSingleQuote = !inSingleQuote;
-                currentStatement += char;
-                continue;
-            }
-        }
-        
-        // Handle double quotes
-        if (!inDollarQuote && !inSingleQuote && !inBlockComment && !inComment) {
-            if (char === '"') {
-                inDoubleQuote = !inDoubleQuote;
-                currentStatement += char;
-                continue;
-            }
-        }
-        
-        // Add character to current statement
-        currentStatement += char;
-        
-        // Split on semicolon only if not in quotes or dollar quotes
-        if (char === ';' && !inDollarQuote && !inSingleQuote && !inDoubleQuote && !inComment && !inBlockComment) {
-            const trimmedStatement = currentStatement.trim();
-            if (trimmedStatement.length > 0 && !trimmedStatement.startsWith('--')) {
-                statements.push(trimmedStatement);
-            }
-            currentStatement = '';
-        }
-    }
-    
-    // Add any remaining statement
-    if (currentStatement.trim().length > 0 && !currentStatement.trim().startsWith('--')) {
-        statements.push(currentStatement.trim());
-    }
-    
-    return statements;
-}
 
 // Complete database initialization (blocking for production)
 async function initializeDatabase() {
@@ -349,9 +276,34 @@ async function initializeDatabase() {
 }
 
 // Middleware setup (before database initialization)
-app.use(cors());
+app.use(helmet({
+    contentSecurityPolicy: false, // Disabled because we use inline scripts and CDN resources
+    crossOriginEmbedderPolicy: false
+}));
+app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 app.use(express.static(path.join(__dirname)));
+
+// Rate limiters
+const loginLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 10, // 10 attempts per window
+    message: { success: false, error: 'Too many login attempts. Please try again in 15 minutes.' },
+    standardHeaders: true,
+    legacyHeaders: false
+});
+const apiLimiter = rateLimit({
+    windowMs: 60 * 1000, // 1 minute
+    max: 60, // 60 requests per minute
+    message: { success: false, error: 'Too many requests. Please slow down.' }
+});
+app.use('/api/', apiLimiter);
+
+// Trust proxy (required for Railway / Render / Heroku reverse proxies)
+// Without this, secure cookies are not set behind HTTPS proxies
+if (process.env.NODE_ENV === 'production') {
+    app.set('trust proxy', 1);
+}
 
 // Session Middleware
 app.use(session({
@@ -360,7 +312,9 @@ app.use(session({
     saveUninitialized: false,
     cookie: { 
         secure: process.env.NODE_ENV === 'production', // HTTPS only in production
-        maxAge: 3600000 // 1 hour
+        sameSite: 'lax',   // Prevents CSRF while allowing same-site navigation
+        httpOnly: true,     // Prevent XSS from reading session cookie
+        maxAge: 3600000     // 1 hour
     }
 }));
 
@@ -559,19 +513,8 @@ async function recordRevenue(type, amount, metadata = {}) {
 }
 
 function generateRegistrationHash(data) {
-    // Create a simple hash for the registration data
     const dataString = `${data.id}-${data.farmerName}-${data.province}-${data.vegetableId}-${data.areaHa}-${data.plantingDate}`;
-    
-    // Simple hash function (in production, use crypto.subtle)
-    let hash = 0;
-    for (let i = 0; i < dataString.length; i++) {
-        const char = dataString.charCodeAt(i);
-        hash = ((hash << 5) - hash) + char;
-        hash = hash & hash; // Convert to 32bit integer
-    }
-    
-    // Convert to hex string
-    return Math.abs(hash).toString(16).padStart(64, '0');
+    return crypto.createHash('sha256').update(dataString).digest('hex');
 }
 
 // Philippine geography (PSGC) — provinces, cities/municipalities, barangays
@@ -615,13 +558,19 @@ app.get('/api/geo/barangays', (req, res) => {
 // API Routes
 
 // Health check
-app.get('/api/health', (req, res) => {
+app.get('/api/health', async (req, res) => {
+    let blockchainConnected = false;
+    try {
+        const bcRes = await axios.get(`${CHEESE_API_URL}/api/health`, { timeout: 3000 });
+        blockchainConnected = bcRes.status === 200;
+    } catch (_) { /* blockchain unreachable */ }
+
     res.json({
         status: databaseAvailable ? 'healthy' : 'degraded',
         service: 'farmers-consensus-api',
         database_connected: databaseAvailable,
         database_status: databaseAvailable ? 'available' : 'unavailable',
-        blockchain_connected: true,
+        blockchain_connected: blockchainConnected,
         cheese_api_url: CHEESE_API_URL,
         environment: process.env.NODE_ENV || 'development',
         timestamp: new Date().toISOString()
@@ -640,6 +589,14 @@ app.post('/api/farmers/register', async (req, res) => {
                 error: 'Missing required fields' 
             });
         }
+
+        // Sanitize string inputs to prevent XSS
+        registrationData.farmerName = sanitizeInput(registrationData.farmerName);
+        registrationData.contact = sanitizeInput(registrationData.contact || '');
+        registrationData.province = sanitizeInput(registrationData.province);
+        registrationData.municipality = sanitizeInput(registrationData.municipality || '');
+        registrationData.barangay = sanitizeInput(registrationData.barangay || '');
+        registrationData.vegetableId = sanitizeInput(registrationData.vegetableId);
 
         // Check database availability (only fail hard in production)
         if (!databaseAvailable && process.env.NODE_ENV === 'production') {
@@ -789,6 +746,16 @@ app.post('/api/buyers/register', async (req, res) => {
             });
         }
 
+        // Sanitize string inputs to prevent XSS
+        buyerData.buyerName = sanitizeInput(buyerData.buyerName);
+        buyerData.companyName = sanitizeInput(buyerData.companyName);
+        buyerData.province = sanitizeInput(buyerData.province);
+        if (buyerData.email) buyerData.email = sanitizeInput(buyerData.email);
+        if (buyerData.phone) buyerData.phone = sanitizeInput(buyerData.phone);
+        if (buyerData.businessType) buyerData.businessType = sanitizeInput(buyerData.businessType);
+        if (buyerData.annualVolume) buyerData.annualVolume = sanitizeInput(buyerData.annualVolume);
+        if (buyerData.preferredProvinces) buyerData.preferredProvinces = sanitizeInput(buyerData.preferredProvinces);
+
         // Calculate fees
         const isPremium = buyerData.premiumTier || false;
         const totalFee = BUYER_REGISTRATION_FEE + (isPremium ? BUYER_PREMIUM_FEE : 0);
@@ -885,6 +852,14 @@ app.post('/api/matches/create', async (req, res) => {
                 error: 'Missing required fields' 
             });
         }
+
+        // Sanitize string inputs to prevent XSS
+        matchData.farmerId = sanitizeInput(matchData.farmerId);
+        matchData.buyerId = sanitizeInput(matchData.buyerId);
+        matchData.vegetableId = sanitizeInput(matchData.vegetableId);
+        if (matchData.status) matchData.status = sanitizeInput(matchData.status);
+        if (matchData.deliveryTerms) matchData.deliveryTerms = sanitizeInput(matchData.deliveryTerms);
+        if (matchData.paymentTerms) matchData.paymentTerms = sanitizeInput(matchData.paymentTerms);
 
         // Create blockchain transaction for the match
         const blockchainResult = await createBlockchainTransaction({
@@ -1046,7 +1021,7 @@ app.get('/api/farmers/statistics', async (req, res) => {
 });
 
 // Admin Authentication Endpoints
-app.post('/api/admin/login', (req, res) => {
+app.post('/api/admin/login', loginLimiter, (req, res) => {
     const { username, password } = req.body;
     
     if (username === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
@@ -1087,7 +1062,7 @@ app.post('/api/admin/farmers/verify', requireAdmin, async (req, res) => {
             return res.status(400).json({ success: false, error: 'Missing registration ID or status' });
         }
         
-        if (!['Geo-Verified', 'Oracle Confirmed'].includes(status)) {
+        if (!['Geo-Verified', 'Oracle Confirmed', 'Cancelled'].includes(status)) {
             return res.status(400).json({ success: false, error: 'Invalid verification status' });
         }
 
@@ -1173,6 +1148,9 @@ app.post('/api/auth/register', async (req, res) => {
                 error: 'Missing required fields' 
             });
         }
+
+        const sanitizedFullName = sanitizeInput(fullName);
+        const sanitizedRegistrationId = registrationId ? sanitizeInput(registrationId) : null;
         
         if (!['farmer', 'buyer'].includes(userType)) {
             return res.status(400).json({ 
@@ -1212,7 +1190,7 @@ app.post('/api/auth/register', async (req, res) => {
             `INSERT INTO users (email, password_hash, full_name, user_type, registration_id, wallet_address)
              VALUES ($1, $2, $3, $4, $5, $6)
              RETURNING id, email, full_name, user_type, created_at`,
-            [email.toLowerCase(), passwordHash, fullName, userType, registrationId || null, null]
+            [email.toLowerCase(), passwordHash, sanitizedFullName, userType, sanitizedRegistrationId, null]
         );
         
         if (result && result.rows[0]) {
@@ -1283,7 +1261,7 @@ app.post('/api/auth/register', async (req, res) => {
 });
 
 // User Login
-app.post('/api/auth/login', async (req, res) => {
+app.post('/api/auth/login', loginLimiter, async (req, res) => {
     try {
         const { email, password } = req.body;
         
@@ -1443,18 +1421,18 @@ app.put('/api/user/profile', requireAuth, async (req, res) => {
         
         const updateFields = [];
         const values = [];
-        const paramCount = [];
+        let paramIdx = 0;
         
         if (fullName) {
-            updateFields.push('full_name = $1');
-            values.push(fullName);
-            paramCount.push(++paramCount.length);
+            paramIdx++;
+            updateFields.push(`full_name = $${paramIdx}`);
+            values.push(sanitizeInput(fullName));
         }
         
         if (walletAddress) {
-            updateFields.push('wallet_address = $1');
+            paramIdx++;
+            updateFields.push(`wallet_address = $${paramIdx}`);
             values.push(walletAddress);
-            paramCount.push(++paramCount.length);
         }
         
         if (updateFields.length === 0) {
@@ -1464,10 +1442,11 @@ app.put('/api/user/profile', requireAuth, async (req, res) => {
             });
         }
         
+        paramIdx++;
         values.push(userId);
         
         const result = await safeQuery(
-            `UPDATE users SET ${updateFields.join(', ')} WHERE id = $${paramCount.length} RETURNING *`,
+            `UPDATE users SET ${updateFields.join(', ')} WHERE id = $${paramIdx} RETURNING *`,
             values
         );
         
@@ -1658,7 +1637,7 @@ async function grantReward(userId, rewardType, rewardAmount, token, description)
         // Log reward activity
         await safeQuery(
             `INSERT INTO user_activity (user_id, activity_type, activity_description, ip_address)
-             VALUES ($1, 'reward', 'Received reward: ' + $2, $3)`,
+             VALUES ($1, 'reward', 'Received reward: ' || $2, $3)`,
             [userId, description, '127.0.0.1']
         );
         
@@ -1971,25 +1950,34 @@ app.get('/api/revenue/analytics', requireAdmin, async (req, res) => {
         }
         
         let dateFilter = '';
+        let dateFilterDaily = '';
+        const dateParams = [];
+        
         if (timeframe === '7d') {
-            const sevenDaysAgo = new Date();
-            sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-            dateFilter = `AND transaction_timestamp >= '${sevenDaysAgo.toISOString()}'`;
+            const cutoff = new Date();
+            cutoff.setDate(cutoff.getDate() - 7);
+            dateParams.push(cutoff.toISOString());
+            dateFilter = `AND transaction_timestamp >= $${dateParams.length}`;
+            dateFilterDaily = `AND date >= $${dateParams.length}`;
         } else if (timeframe === '30d') {
-            const thirtyDaysAgo = new Date();
-            thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-            dateFilter = `AND transaction_timestamp >= '${thirtyDaysAgo.toISOString()}'`;
+            const cutoff = new Date();
+            cutoff.setDate(cutoff.getDate() - 30);
+            dateParams.push(cutoff.toISOString());
+            dateFilter = `AND transaction_timestamp >= $${dateParams.length}`;
+            dateFilterDaily = `AND date >= $${dateParams.length}`;
         }
         
         // Try to use database first
         try {
             // Get total revenue from database
             const totalRevenueResult = await pool.query(
-                'SELECT COALESCE(SUM(amount), 0) as total_revenue FROM revenue_transactions WHERE 1=1 ' + dateFilter
+                `SELECT COALESCE(SUM(amount), 0) as total_revenue FROM revenue_transactions WHERE 1=1 ${dateFilter}`,
+                dateParams
             );
             
             const transactionCountResult = await pool.query(
-                'SELECT COUNT(*) as count FROM revenue_transactions WHERE 1=1 ' + dateFilter
+                `SELECT COUNT(*) as count FROM revenue_transactions WHERE 1=1 ${dateFilter}`,
+                dateParams
             );
             
             // Get fee breakdown
@@ -2003,23 +1991,30 @@ app.get('/api/revenue/analytics', requireAdmin, async (req, res) => {
                     COALESCE(SUM(CASE WHEN transaction_type = 'buyerMatching' THEN amount END), 0) as buyer_matching_fees
                 FROM revenue_transactions 
                 WHERE 1=1 ${dateFilter}
-            `);
+            `, dateParams);
             
             // Get recent transactions
             const recentTransactionsResult = await pool.query(
-                'SELECT transaction_type, amount, transaction_timestamp, metadata FROM revenue_transactions ' +
-                'WHERE 1=1 ' + dateFilter + ' ' +
-                'ORDER BY transaction_timestamp DESC LIMIT 10'
+                `SELECT transaction_type, amount, transaction_timestamp, metadata FROM revenue_transactions WHERE 1=1 ${dateFilter} ORDER BY transaction_timestamp DESC LIMIT 10`,
+                dateParams
             );
             
-            // Get daily revenue
-            const dailyRevenueResult = await pool.query(`
-                SELECT date, total_revenue as revenue, transaction_count as count 
-                FROM daily_revenue 
-                WHERE 1=1 ${dateFilter}
-                ORDER BY date DESC
-            `);
+            // Get daily revenue (uses 'date' column, not 'transaction_timestamp')
+            const dailyRevenueResult = await pool.query(
+                `SELECT date, total_revenue as revenue, transaction_count as count FROM daily_revenue WHERE 1=1 ${dateFilterDaily} ORDER BY date DESC`,
+                dateParams
+            );
             
+            // Calculate growth from DB data
+            let revenueGrowth = 0;
+            if (dailyRevenueResult.rows.length >= 2) {
+                const latest = parseFloat(dailyRevenueResult.rows[0].revenue);
+                const previous = parseFloat(dailyRevenueResult.rows[1].revenue);
+                if (previous > 0) {
+                    revenueGrowth = (((latest - previous) / previous) * 100).toFixed(2);
+                }
+            }
+
             const analytics = {
                 totalRevenue: parseFloat(totalRevenueResult.rows[0].total_revenue),
                 totalTransactions: parseInt(transactionCountResult.rows[0].count),
@@ -2035,13 +2030,17 @@ app.get('/api/revenue/analytics', requireAdmin, async (req, res) => {
                     ? (parseFloat(totalRevenueResult.rows[0].total_revenue) / parseInt(transactionCountResult.rows[0].count)).toFixed(2) 
                     : 0,
                 dailyRevenue: dailyRevenueResult.rows,
-                recentTransactions: recentTransactionsResult.rows.map(tx => ({
-                    type: tx.transaction_type,
-                    amount: parseFloat(tx.amount),
-                    timestamp: tx.transaction_timestamp,
-                    metadata: JSON.parse(tx.metadata)
-                })),
-                revenueGrowth: calculateRevenueGrowth()
+                recentTransactions: recentTransactionsResult.rows.map(tx => {
+                    let meta = tx.metadata;
+                    if (typeof meta === 'string') { try { meta = JSON.parse(meta); } catch (_) { meta = {}; } }
+                    return {
+                        type: tx.transaction_type,
+                        amount: parseFloat(tx.amount),
+                        timestamp: tx.transaction_timestamp,
+                        metadata: meta || {}
+                    };
+                }),
+                revenueGrowth
             };
             
             res.json({

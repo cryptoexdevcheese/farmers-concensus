@@ -1292,6 +1292,13 @@ const app = {
             <span>Oracle Confirmed</span>
           </span>
         `;
+      } else if (status === 'Cancelled') {
+        statusBadge = `
+          <span class="status-badge cancelled" style="background-color: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3); display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 6px; font-size: 0.85rem; font-weight: 500;">
+            <i data-lucide="x-circle" style="width: 14px; height: 14px;"></i>
+            <span>Cancelled</span>
+          </span>
+        `;
       } else {
         statusBadge = `
           <span class="status-badge pending" style="background-color: rgba(245, 158, 11, 0.1); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.3); display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 6px; font-size: 0.85rem; font-weight: 500;">

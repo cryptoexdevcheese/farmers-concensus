@@ -1,4 +1,4 @@
-const CACHE_NAME = 'farmers-consensus-v9';
+const CACHE_NAME = 'farmers-consensus-v10';
 
 const urlsToCache = [
   '/manifest.json',
@@ -39,6 +39,9 @@ self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
 
   const url = new URL(event.request.url);
+
+  // Never cache API responses
+  if (url.pathname.startsWith('/api/')) return;
 
   if (isAppAsset(url)) {
     event.respondWith(
