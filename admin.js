@@ -7,6 +7,27 @@ document.addEventListener('DOMContentLoaded', () => {
     initMobileEnhancements();
 });
 
+// Toggle show/hide admin password
+function toggleAdminPassword() {
+    const passwordInput = document.getElementById('admin-password');
+    const icon = document.getElementById('toggle-password-icon');
+    const btn = document.getElementById('toggle-password');
+
+    if (!passwordInput || !icon) return;
+
+    const isHidden = passwordInput.type === 'password';
+    passwordInput.type = isHidden ? 'text' : 'password';
+
+    // Swap icon between eye and eye-off
+    icon.setAttribute('data-lucide', isHidden ? 'eye-off' : 'eye');
+    btn.style.color = isHidden ? 'var(--color-primary, #10b981)' : 'var(--color-text-muted, #888)';
+
+    // Re-render Lucide icons
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+window.toggleAdminPassword = toggleAdminPassword;
+
+
 // Initialize Lucide icons
 function initLucide() {
     if (typeof lucide !== 'undefined') {

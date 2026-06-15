@@ -35,7 +35,12 @@
                     
                     <div class="form-group">
                         <label>Password</label>
-                        <input type="password" id="admin-password" placeholder="Enter admin password" required>
+                        <div class="password-input-wrapper" style="position: relative; display: flex; align-items: center;">
+                            <input type="password" id="admin-password" placeholder="Enter admin password" required style="width: 100%; padding-right: 44px;">
+                            <button type="button" id="toggle-password" onclick="toggleAdminPassword()" title="Show/Hide Password" style="position: absolute; right: 10px; background: none; border: none; cursor: pointer; color: var(--color-text-muted, #888); padding: 4px; display: flex; align-items: center; justify-content: center; border-radius: 4px; transition: color 0.2s;">
+                                <i data-lucide="eye" id="toggle-password-icon" style="width: 18px; height: 18px;"></i>
+                            </button>
+                        </div>
                     </div>
                     
                     <button type="submit" class="btn-primary btn-full">
@@ -43,6 +48,7 @@
                         <span>Login to Admin Panel</span>
                     </button>
                 </form>
+
                 
                 <div id="login-error" class="error-message hidden"></div>
                 
