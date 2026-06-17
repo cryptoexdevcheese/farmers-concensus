@@ -1806,9 +1806,27 @@ const app = {
   initPWAFeatures() {
     // Register service worker if available
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js')
-        .then(registration => console.log('SW registered'))
-        .catch(error => console.log('SW registration failed'));
+      navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' })
+        .then(registration => {
+          console.log('SW registered');
+          
+          // Check for service worker updates immediately on page load
+          registration.update();
+          
+          // If a new service worker is installed, reload the page to load new assets
+          registration.addEventListener('updatefound', () => {
+            const newWorker = registration.installing;
+            if (newWorker) {
+              newWorker.addEventListener('statechange', () => {
+                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                  console.log('New Service Worker version installed. Reloading...');
+                  window.location.reload();
+                }
+              });
+            }
+          });
+        })
+        .catch(error => console.log('SW registration failed', error));
     }
     
     // Handle online/offline status

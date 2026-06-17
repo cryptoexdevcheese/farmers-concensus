@@ -45,7 +45,7 @@ self.addEventListener('fetch', (event) => {
 
   if (isAppAsset(url)) {
     event.respondWith(
-      fetch(event.request)
+      fetch(new Request(event.request, { cache: 'no-cache' }))
         .then((response) => {
           if (response && response.status === 200) {
             const clone = response.clone();
