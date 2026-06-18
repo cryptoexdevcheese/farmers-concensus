@@ -2018,10 +2018,18 @@ const app = {
       });
     }
     
-    // User dropdown toggle
-    const userDropdownBtn = document.getElementById('user-dropdown-btn');
-    if (userDropdownBtn) {
-      userDropdownBtn.addEventListener('click', () => this.toggleUserDropdown());
+    // User dropdown toggle (clickable anywhere on the user widget header)
+    const userMenu = document.getElementById('user-menu');
+    if (userMenu) {
+      userMenu.addEventListener('click', (e) => {
+        const userDropdownMenu = document.getElementById('user-dropdown-menu');
+        // Prevent toggle when clicking dropdown links/buttons themselves
+        if (userDropdownMenu && userDropdownMenu.contains(e.target)) {
+          return;
+        }
+        e.stopPropagation();
+        this.toggleUserDropdown();
+      });
     }
     
     // Logout button
@@ -2036,6 +2044,56 @@ const app = {
       profileLink.addEventListener('click', (e) => {
         e.preventDefault();
         this.openProfileModal();
+        const userDropdownMenu = document.getElementById('user-dropdown-menu');
+        if (userDropdownMenu) {
+          userDropdownMenu.classList.remove('active');
+        }
+      });
+    }
+
+    // Balance link
+    const balanceLink = document.querySelector('[href="#balance"]');
+    if (balanceLink) {
+      balanceLink.addEventListener('click', (e) => {
+        e.preventDefault();
+        // Switch to User Dashboard tab
+        const tabBtn = document.querySelector('[data-tab="user-dashboard-tab"]');
+        if (tabBtn) {
+          tabBtn.click();
+          // Scroll to current balance card
+          const balanceCard = document.querySelector('.earning-card');
+          if (balanceCard) {
+            balanceCard.scrollIntoView({ behavior: 'smooth' });
+          }
+        }
+        // Close dropdown
+        const userDropdownMenu = document.getElementById('user-dropdown-menu');
+        if (userDropdownMenu) {
+          userDropdownMenu.classList.remove('active');
+        }
+      });
+    }
+
+    // Rewards link
+    const rewardsLink = document.querySelector('[href="#rewards"]');
+    if (rewardsLink) {
+      rewardsLink.addEventListener('click', (e) => {
+        e.preventDefault();
+        // Switch to User Dashboard tab
+        const tabBtn = document.querySelector('[data-tab="user-dashboard-tab"]');
+        if (tabBtn) {
+          tabBtn.click();
+          // Scroll to rewards list section
+          const rewardsSection = document.getElementById('dashboard-rewards-list');
+          if (rewardsSection) {
+            rewardsSection.scrollIntoView({ behavior: 'smooth' });
+          }
+        }
+        // Close dropdown
+        const userDropdownMenu = document.getElementById('user-dropdown-menu');
+        if (userDropdownMenu) {
+          userDropdownMenu.classList.remove('active');
+        }
       });
     }
     
@@ -2682,7 +2740,8 @@ const app = {
       const accounts = await window.ethereum.request({ method: 'eth_accounts' });
       if (accounts.length > 0) {
         this.walletAddress = accounts[0];
-        this.updateWalletUI(true);
+        // Fetch balance which also updates the UI with correct network checks
+        await this.getNCHTokenBalance();
         
         // If user is logged in, update their profile with wallet address
         if (this.currentUser && this.authToken) {
@@ -2698,10 +2757,10 @@ const app = {
   setupWalletEvents() {
     if (window.ethereum) {
       // Handle account changes
-      window.ethereum.on('accountsChanged', (accounts) => {
+      window.ethereum.on('accountsChanged', async (accounts) => {
         if (accounts.length > 0) {
           this.walletAddress = accounts[0];
-          this.updateWalletUI(true);
+          await this.getNCHTokenBalance();
           if (this.currentUser && this.authToken) {
             this.linkWalletToAccount(this.walletAddress);
           }
@@ -2798,58 +2857,118 @@ const app = {
   },
 
   // Update wallet UI
-  updateWalletUI(isConnected) {
-    const connectBtn = document.getElementById('connect-wallet-btn');
-    const disconnectBtn = document.getElementById('disconnect-wallet-btn');
+  updateWalletUI(isConnected, isCorrectNetwork = true) {
     const walletDisplay = document.getElementById('wallet-address-display');
+    const dbAddress = document.getElementById('dashboard-wallet-address');
+    const dbBalance = document.getElementById('dashboard-blockchain-balance');
     
     if (isConnected && this.walletAddress) {
-      // Show connected state
-      if (walletDisplay) {
-        walletDisplay.innerHTML = `
-          <span class="wallet-address">${this.walletAddress.slice(0, 6)}...${this.walletAddress.slice(-4)}</span>
-          <button class="btn btn-sm btn-outline" id="disconnect-wallet-btn">
-            <i data-lucide="unlink"></i>
-            <span>Disconnect</span>
-          </button>
-        `;
-        
-        // Re-initialize Lucide icons
-        if (window.lucide) {
-          window.lucide.createIcons();
-        }
-        
-        // Re-attach disconnect handler
-        const newDisconnectBtn = document.getElementById('disconnect-wallet-btn');
-        if (newDisconnectBtn) {
-          newDisconnectBtn.addEventListener('click', () => this.disconnectWallet());
-        }
+      if (dbAddress) {
+        dbAddress.textContent = `${this.walletAddress.slice(0, 6)}...${this.walletAddress.slice(-4)}`;
       }
       
-      // Add connect button handlers if they exist
-      if (connectBtn) {
-        connectBtn.style.display = 'none';
+      if (!isCorrectNetwork) {
+        if (dbBalance) {
+          dbBalance.textContent = 'Wrong Network';
+          dbBalance.style.color = '#ef4444';
+        }
+        
+        if (walletDisplay) {
+          walletDisplay.innerHTML = `
+            <div style="display: flex; flex-direction: column; gap: 8px; width: 100%;">
+              <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                <span class="wallet-address" style="font-family: monospace; font-size: 0.9em; background: rgba(239, 68, 68, 0.1); padding: 4px 8px; border-radius: 4px; border: 1px solid rgba(239, 68, 68, 0.2); color: #ef4444; width: 100%; text-align: center; margin-bottom: 4px;">
+                  Wrong Network (${this.walletAddress.slice(0, 6)}...${this.walletAddress.slice(-4)})
+                </span>
+                <div style="display: flex; gap: 8px; width: 100%;">
+                  <button class="btn btn-sm" id="switch-network-btn" style="flex: 1; background: #eab308; border-color: #eab308; color: white; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-weight: 600;">
+                    <i data-lucide="refresh-cw" style="width: 14px; height: 14px;"></i>
+                    <span>Switch to CHEESE</span>
+                  </button>
+                  <button class="btn btn-sm btn-outline" id="disconnect-wallet-btn" style="display: flex; align-items: center; justify-content: center; padding: 6px 12px; border-radius: 6px; cursor: pointer;">
+                    <i data-lucide="unlink" style="width: 14px; height: 14px;"></i>
+                  </button>
+                </div>
+              </div>
+            </div>
+          `;
+          
+          if (window.lucide) {
+            window.lucide.createIcons();
+          }
+          
+          // Re-attach handlers
+          const switchBtn = document.getElementById('switch-network-btn');
+          if (switchBtn) {
+            switchBtn.addEventListener('click', () => this.switchEthereumNetwork());
+          }
+          const disconnectBtn = document.getElementById('disconnect-wallet-btn');
+          if (disconnectBtn) {
+            disconnectBtn.addEventListener('click', () => this.disconnectWallet());
+          }
+        }
+      } else {
+        const bal = this.blockchainBalance || '0.0000';
+        if (dbBalance) {
+          dbBalance.textContent = `${bal} NCH`;
+          dbBalance.style.color = 'var(--color-primary)';
+        }
+        
+        if (walletDisplay) {
+          walletDisplay.innerHTML = `
+            <div style="display: flex; flex-direction: column; gap: 8px; width: 100%;">
+              <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                <span class="wallet-address" style="font-family: monospace; font-size: 0.9em; background: rgba(16, 185, 129, 0.1); padding: 4px 8px; border-radius: 4px; border: 1px solid rgba(16, 185, 129, 0.2); color: #10b981;">
+                  Connected: ${this.walletAddress.slice(0, 6)}...${this.walletAddress.slice(-4)}
+                </span>
+                <button class="btn btn-sm btn-outline" id="disconnect-wallet-btn" style="display: flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 6px; cursor: pointer;">
+                  <i data-lucide="unlink" style="width: 14px; height: 14px;"></i>
+                  <span>Disconnect</span>
+                </button>
+              </div>
+              <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 8px; border-top: 1px solid var(--color-border);">
+                <span style="font-size: 13px; color: var(--color-text-muted);">On-Chain Balance:</span>
+                <strong style="color: var(--color-primary); font-size: 1.1em;" id="blockchain-nch-balance">${bal} NCH</strong>
+              </div>
+            </div>
+          `;
+          
+          if (window.lucide) {
+            window.lucide.createIcons();
+          }
+          
+          const disconnectBtn = document.getElementById('disconnect-wallet-btn');
+          if (disconnectBtn) {
+            disconnectBtn.addEventListener('click', () => this.disconnectWallet());
+          }
+        }
       }
     } else {
-      // Show disconnected state
+      // Disconnected state
+      if (dbAddress) {
+        dbAddress.textContent = 'Connect wallet to view';
+      }
+      if (dbBalance) {
+        dbBalance.textContent = 'Not Connected';
+        dbBalance.style.color = 'var(--color-text-muted)';
+      }
+      
       if (walletDisplay) {
         walletDisplay.innerHTML = `
           <span class="wallet-placeholder">No wallet connected</span>
-          <button class="btn btn-sm btn-outline" id="connect-wallet-btn">
-            <i data-lucide="link"></i>
+          <button class="btn btn-sm btn-outline" id="connect-wallet-btn" style="display: flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 6px; cursor: pointer;">
+            <i data-lucide="link" style="width: 14px; height: 14px;"></i>
             <span>Connect Wallet</span>
           </button>
         `;
         
-        // Re-initialize Lucide icons
         if (window.lucide) {
           window.lucide.createIcons();
         }
         
-        // Re-attach connect handler
-        const newConnectBtn = document.getElementById('connect-wallet-btn');
-        if (newConnectBtn) {
-          newConnectBtn.addEventListener('click', () => this.connectWallet());
+        const connectBtn = document.getElementById('connect-wallet-btn');
+        if (connectBtn) {
+          connectBtn.addEventListener('click', () => this.connectWallet());
         }
       }
     }
@@ -2860,21 +2979,67 @@ const app = {
     if (!this.walletAddress || !window.ethereum) return;
     
     try {
-      // This would typically involve calling a smart contract
-      // For now, we'll simulate the token balance
-      // In production, you would use the actual NCH token contract address and ABI
+      const network = await this.getCurrentNetwork();
+      if (network && network.chainId !== '20250') {
+        console.warn('Wrong network connected. Expected Chain ID 20250 (0x4F2A). Got:', network.chainId);
+        this.updateWalletUI(true, false);
+        return;
+      }
       
       const provider = new ethers.BrowserProvider(window.ethereum);
+      const balance = await provider.getBalance(this.walletAddress);
       
-      // Example token contract call (you would need the actual contract address and ABI)
-      // const tokenContract = new ethers.Contract(tokenAddress, tokenABI, provider);
-      // const balance = await tokenContract.balanceOf(this.walletAddress);
+      // formatEther converts BigInt wei balance to standard ether/native coin string
+      const formattedBalance = parseFloat(ethers.formatEther(balance)).toFixed(4);
+      this.blockchainBalance = formattedBalance;
       
-      // For now, we'll use a placeholder
-      console.log('Wallet connected, token balance would be fetched here');
-      
+      this.updateWalletUI(true, true);
     } catch (error) {
       console.error('Error getting token balance:', error);
+      this.updateWalletUI(true, true); // Fallback to normal display if call fails
+    }
+  },
+
+  // Switch to CHEESE network in wallet
+  async switchEthereumNetwork() {
+    if (!window.ethereum) return;
+    
+    const cheeseNetwork = {
+      chainId: '0x4F2A',
+      chainName: 'CHEESE Blockchain',
+      nativeCurrency: {
+        name: 'NCheese',
+        symbol: 'NCH',
+        decimals: 18
+      },
+      rpcUrls: ['https://cheeseblockchain.com/api/rpc'],
+      blockExplorerUrls: ['https://cheeseblockchain.com/explorer']
+    };
+    
+    try {
+      await window.ethereum.request({
+        method: 'wallet_switchEthereumChain',
+        params: [{ chainId: '0x4F2A' }]
+      });
+      this.showNotification('Switched to CHEESE Blockchain network', 'success');
+      await this.getNCHTokenBalance();
+    } catch (switchError) {
+      if (switchError.code === 4902) {
+        try {
+          await window.ethereum.request({
+            method: 'wallet_addEthereumChain',
+            params: [cheeseNetwork]
+          });
+          this.showNotification('CHEESE Blockchain network added and switched!', 'success');
+          await this.getNCHTokenBalance();
+        } catch (addError) {
+          console.error('Error adding network:', addError);
+          this.showNotification('Failed to add CHEESE Blockchain network', 'error');
+        }
+      } else {
+        console.error('Error switching network:', switchError);
+        this.showNotification('Failed to switch network', 'error');
+      }
     }
   },
 
