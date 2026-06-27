@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS users (
     user_type VARCHAR(20) NOT NULL, -- 'farmer' or 'buyer'
     wallet_address VARCHAR(255),
     registration_id VARCHAR(50), -- Links to farmer_id or buyer_id
+    phone VARCHAR(20),
     is_active BOOLEAN DEFAULT TRUE,
     email_verified BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -84,6 +85,11 @@ CREATE TABLE IF NOT EXISTS farmers_registrations (
     registration_timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     premium_tier BOOLEAN DEFAULT FALSE,
     verification_status VARCHAR(50) DEFAULT 'Pending',
+    barangay_verification_status VARCHAR(50) DEFAULT 'Pending',
+    barangay_inspector_name VARCHAR(255),
+    barangay_remarks TEXT,
+    barangay_blockchain_txid VARCHAR(255),
+    user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -104,6 +110,7 @@ CREATE TABLE IF NOT EXISTS buyers_registrations (
     blockchain_hash VARCHAR(255),
     registration_timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     premium_tier BOOLEAN DEFAULT FALSE,
+    user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -118,6 +125,15 @@ CREATE TABLE IF NOT EXISTS farmer_buyer_matches (
     match_value DECIMAL(12, 2) NOT NULL,
     blockchain_transaction_id VARCHAR(255),
     blockchain_hash VARCHAR(255),
+    buyer_confirmation_status VARCHAR(50) DEFAULT 'Pending',
+    buyer_received_qty_tons DECIMAL(10, 2),
+    buyer_quality_rating VARCHAR(50),
+    buyer_remarks TEXT,
+    buyer_blockchain_txid VARCHAR(255),
+    status VARCHAR(50) DEFAULT 'pending',
+    delivery_terms TEXT,
+    payment_terms TEXT,
+    metadata JSONB,
     match_timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );

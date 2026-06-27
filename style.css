@@ -4335,3 +4335,53 @@ textarea {
     height: 200px;
   }
 }
+
+/* Form Lock Overlay Styles */
+.form-lock-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(11, 17, 14, 0.93);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 32px 24px;
+  z-index: 100;
+  border-radius: 12px;
+  border: 1px solid rgba(16, 185, 129, 0.15);
+  transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+
+.form-lock-overlay.hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.lock-content {
+  max-width: 420px;
+  margin: 0 auto;
+}
+
+.lock-content h4 {
+  font-size: 22px;
+  font-weight: 700;
+  color: white;
+  margin-top: 0;
+  margin-bottom: 12px;
+  font-family: 'Outfit', sans-serif;
+  letter-spacing: -0.02em;
+}
+
+.lock-content p {
+  color: var(--color-text-muted);
+  font-size: 14px;
+  line-height: 1.6;
+  margin-top: 0;
+  margin-bottom: 24px;
+}

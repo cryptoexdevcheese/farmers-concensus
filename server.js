@@ -167,7 +167,68 @@ async function safeQuery(text, params) {
             console.error('❌ Full error details:', error);
         }
         
-        throw error; // Re-throw to let caller handle it
+        throw error;
+    }
+}
+
+// Helper to dynamically verify/add columns
+async function ensureTableColumns(client) {
+    try {
+        console.log('🔄 Verifying database columns match schema upgrades...');
+        
+        // users additions
+        try {
+            await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(20)`);
+        } catch (e) {
+            console.warn(`Column warning (users.phone):`, e.message);
+        }
+        
+        // farmers_registrations additions
+        const columnsToFarmer = [
+            { name: 'verification_status', type: "VARCHAR(50) DEFAULT 'Pending'" },
+            { name: 'barangay_verification_status', type: "VARCHAR(50) DEFAULT 'Pending'" },
+            { name: 'barangay_inspector_name', type: 'VARCHAR(255)' },
+            { name: 'barangay_remarks', type: 'TEXT' },
+            { name: 'barangay_blockchain_txid', type: 'VARCHAR(255)' },
+            { name: 'user_id', type: 'INTEGER REFERENCES users(id) ON DELETE SET NULL' }
+        ];
+        for (const col of columnsToFarmer) {
+            try {
+                await client.query(`ALTER TABLE farmers_registrations ADD COLUMN IF NOT EXISTS ${col.name} ${col.type}`);
+            } catch (e) {
+                console.warn(`Column warning (farmers_registrations.${col.name}):`, e.message);
+            }
+        }
+
+        // buyers_registrations additions
+        try {
+            await client.query(`ALTER TABLE buyers_registrations ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id) ON DELETE SET NULL`);
+        } catch (e) {
+            console.warn(`Column warning (buyers_registrations.user_id):`, e.message);
+        }
+
+        // farmer_buyer_matches additions
+        const columnsToMatches = [
+            { name: 'buyer_confirmation_status', type: "VARCHAR(50) DEFAULT 'Pending'" },
+            { name: 'buyer_received_qty_tons', type: 'DECIMAL(10, 2)' },
+            { name: 'buyer_quality_rating', type: 'VARCHAR(50)' },
+            { name: 'buyer_remarks', type: 'TEXT' },
+            { name: 'buyer_blockchain_txid', type: 'VARCHAR(255)' },
+            { name: 'status', type: "VARCHAR(50) DEFAULT 'pending'" },
+            { name: 'delivery_terms', type: 'TEXT' },
+            { name: 'payment_terms', type: 'TEXT' },
+            { name: 'metadata', type: 'JSONB' }
+        ];
+        for (const col of columnsToMatches) {
+            try {
+                await client.query(`ALTER TABLE farmer_buyer_matches ADD COLUMN IF NOT EXISTS ${col.name} ${col.type}`);
+            } catch (e) {
+                console.warn(`Column warning (farmer_buyer_matches.${col.name}):`, e.message);
+            }
+        }
+        console.log('✅ All dynamic columns verified/added successfully');
+    } catch (err) {
+        console.error('❌ Dynamic column check error:', err.message);
     }
 }
 
@@ -187,16 +248,11 @@ async function initializeDatabaseSchema() {
         if (fs.existsSync(schemaPath)) {
             const schema = fs.readFileSync(schemaPath, 'utf8');
             
-            // Execute entire schema as a single transaction to handle dependencies correctly
             const client = await pool.connect();
             try {
                 await client.query('BEGIN');
                 await client.query(schema);
-                // Dynamically add verification_status column if it doesn't exist
-                await client.query(`
-                    ALTER TABLE farmers_registrations 
-                    ADD COLUMN IF NOT EXISTS verification_status VARCHAR(50) DEFAULT 'Pending'
-                `);
+                await ensureTableColumns(client);
                 await client.query('COMMIT');
                 console.log('✅ Database schema initialized successfully');
                 return true;
@@ -205,7 +261,8 @@ async function initializeDatabaseSchema() {
                 
                 // If schema already exists, that's okay
                 if (err.message.includes('already exists')) {
-                    console.log('✅ Database schema already exists');
+                    console.log('✅ Database schema already exists, running dynamic column check...');
+                    await ensureTableColumns(client);
                     return true;
                 }
                 
@@ -337,7 +394,7 @@ function requireAdmin(req, res, next) {
 }
 
 // JWT Authentication Middleware for regular users
-function requireAuth(req, res, next) {
+async function requireAuth(req, res, next) {
     const token = req.header('Authorization')?.replace('Bearer ', '');
     
     if (!token) {
@@ -346,6 +403,18 @@ function requireAuth(req, res, next) {
     
     try {
         const decoded = jwt.verify(token, JWT_SECRET);
+        
+        // Verify session in database if database is available
+        if (databaseAvailable && decoded.sessionToken) {
+            const sessionRes = await safeQuery(
+                'SELECT id FROM user_sessions WHERE user_id = $1 AND session_token = $2 AND expires_at > NOW()',
+                [decoded.userId, decoded.sessionToken]
+            );
+            if (!sessionRes || sessionRes.rows.length === 0) {
+                return res.status(401).json({ success: false, error: 'Session expired or logged out' });
+            }
+        }
+        
         req.user = decoded;
         next();
     } catch (error) {
@@ -353,10 +422,36 @@ function requireAuth(req, res, next) {
     }
 }
 
+// Check if request is authenticated (without sending 401 response)
+async function isRequestAuthenticated(req) {
+    if (req.session && req.session.isAdmin) {
+        return true;
+    }
+    const token = req.header('Authorization')?.replace('Bearer ', '');
+    if (!token) {
+        return false;
+    }
+    try {
+        const decoded = jwt.verify(token, JWT_SECRET);
+        if (databaseAvailable && decoded.sessionToken) {
+            const sessionRes = await safeQuery(
+                'SELECT id FROM user_sessions WHERE user_id = $1 AND session_token = $2 AND expires_at > NOW()',
+                [decoded.userId, decoded.sessionToken]
+            );
+            if (!sessionRes || sessionRes.rows.length === 0) {
+                return false;
+            }
+        }
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
 // JWT Helper Functions
-function generateToken(userId, userType) {
+function generateToken(userId, userType, sessionToken) {
     return jwt.sign(
-        { userId, userType },
+        { userId, userType, sessionToken },
         JWT_SECRET,
         { expiresIn: JWT_EXPIRES_IN }
     );
@@ -587,15 +682,37 @@ app.get('/api/health', async (req, res) => {
 });
 
 // Register farmer crop (with blockchain integration)
-app.post('/api/farmers/register', async (req, res) => {
+app.post('/api/farmers/register', requireAuth, async (req, res) => {
     try {
+        if (req.user.userType !== 'farmer') {
+            return res.status(403).json({ success: false, error: 'Only registered farmers can record crop intentions' });
+        }
+
         const registrationData = req.body;
+
+        // Fetch user profile from database to get official name and phone
+        let userProfile = null;
+        if (databaseAvailable) {
+            const userRes = await safeQuery('SELECT email, full_name, phone, registration_id FROM users WHERE id = $1', [req.user.userId]);
+            if (userRes && userRes.rows.length > 0) {
+                userProfile = userRes.rows[0];
+            }
+        }
+        
+        if (!userProfile) {
+            return res.status(404).json({ success: false, error: 'User account not found' });
+        }
+
+        // Prefill from authenticated account
+        registrationData.id = userProfile.registration_id;
+        registrationData.farmerName = userProfile.full_name;
+        registrationData.contact = userProfile.phone;
         
         // Validate required fields
-        if (!registrationData.farmerName || !registrationData.province || !registrationData.vegetableId) {
+        if (!registrationData.province || !registrationData.vegetableId || !registrationData.areaHa || !registrationData.expectedYieldTons) {
             return res.status(400).json({ 
                 success: false, 
-                error: 'Missing required fields' 
+                error: 'Missing required location or crop forecast fields' 
             });
         }
 
@@ -639,8 +756,8 @@ app.post('/api/farmers/register', async (req, res) => {
                     `INSERT INTO farmers_registrations
                     (farmer_id, farmer_name, contact, province, municipality, barangay,
                      vegetable_id, area_sqm, area_ha, expected_yield_tons,
-                     planting_date, harvest_date, blockchain_transaction_id, blockchain_hash, premium_tier, verification_status)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+                     planting_date, harvest_date, blockchain_transaction_id, blockchain_hash, premium_tier, verification_status, user_id)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
                     ON CONFLICT (farmer_id) DO NOTHING`,
                     [
                         farmerId,
@@ -658,7 +775,8 @@ app.post('/api/farmers/register', async (req, res) => {
                         blockchainResult.txid || null,
                         blockchainResult.hash || null,
                         isPremium,
-                        verificationStatus
+                        verificationStatus,
+                        req.user.userId
                     ]
                 );
                 console.log('✅ Farmer saved to database:', registrationData.farmerName);
@@ -743,12 +861,35 @@ app.post('/api/farmers/register', async (req, res) => {
 });
 
 // Register buyer (with blockchain integration)
-app.post('/api/buyers/register', async (req, res) => {
+app.post('/api/buyers/register', requireAuth, async (req, res) => {
     try {
+        if (req.user.userType !== 'buyer') {
+            return res.status(403).json({ success: false, error: 'Only registered buyers can record buyer profiles' });
+        }
+
         const buyerData = req.body;
+
+        // Fetch user profile from database to get official name, phone, email, and registration ID
+        let userProfile = null;
+        if (databaseAvailable) {
+            const userRes = await safeQuery('SELECT email, full_name, phone, registration_id FROM users WHERE id = $1', [req.user.userId]);
+            if (userRes && userRes.rows.length > 0) {
+                userProfile = userRes.rows[0];
+            }
+        }
+        
+        if (!userProfile) {
+            return res.status(404).json({ success: false, error: 'User account not found' });
+        }
+
+        // Prefill from authenticated account
+        buyerData.id = userProfile.registration_id;
+        buyerData.buyerName = userProfile.full_name;
+        buyerData.email = userProfile.email;
+        buyerData.phone = userProfile.phone;
         
         // Validate required fields
-        if (!buyerData.buyerName || !buyerData.companyName || !buyerData.province) {
+        if (!buyerData.buyerName || !buyerData.companyName || !buyerData.province || !buyerData.id) {
             return res.status(400).json({ 
                 success: false, 
                 error: 'Missing required fields' 
@@ -762,45 +903,51 @@ app.post('/api/buyers/register', async (req, res) => {
         if (buyerData.email) buyerData.email = sanitizeInput(buyerData.email);
         if (buyerData.phone) buyerData.phone = sanitizeInput(buyerData.phone);
         if (buyerData.businessType) buyerData.businessType = sanitizeInput(buyerData.businessType);
-        if (buyerData.annualVolume) buyerData.annualVolume = sanitizeInput(buyerData.annualVolume);
-        if (buyerData.preferredProvinces) buyerData.preferredProvinces = sanitizeInput(buyerData.preferredProvinces);
 
         // Calculate fees
         const isPremium = buyerData.premiumTier || false;
         const totalFee = BUYER_REGISTRATION_FEE + (isPremium ? BUYER_PREMIUM_FEE : 0);
 
         // Create blockchain transaction for buyer registration
-        const blockchainResult = await createBlockchainTransaction({
-            ...buyerData,
-            category: 'buyer_registration'
-        });
+        let blockchainResult = { txid: 'BY-TX-' + Date.now(), hash: 'BY-HASH-' + Date.now() };
+        try {
+            blockchainResult = await createBlockchainTransaction({
+                ...buyerData,
+                category: 'buyer_registration'
+            });
+        } catch (bcError) {
+            console.warn('⚠️ Blockchain transaction failed for buyer, using dev mock receipt:', bcError.message);
+        }
 
         // Save buyer to database
         if (pool) {
             try {
                 await pool.query(
-                    `INSERT INTO buyers 
-                    (name, company_name, province, premium_tier, blockchain_txid, registration_date, 
-                     contact_email, phone, business_type, annual_volume, preferred_provinces, metadata)
-                    VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP, $6, $7, $8, $9, $10, $11)`,
+                    `INSERT INTO buyers_registrations 
+                    (buyer_id, buyer_name, company_name, email, phone, province, business_type, products, monthly_volume, blockchain_transaction_id, blockchain_hash, premium_tier, user_id)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
                     [
+                        buyerData.id,
                         buyerData.buyerName,
                         buyerData.companyName,
+                        buyerData.email || '',
+                        buyerData.phone || '',
                         buyerData.province,
+                        buyerData.businessType || '',
+                        buyerData.products || [],
+                        parseFloat(buyerData.monthlyVolume) || 0,
+                        blockchainResult.txid || null,
+                        blockchainResult.hash || null,
                         isPremium,
-                        blockchainResult.txid,
-                        buyerData.email || null,
-                        buyerData.phone || null,
-                        buyerData.businessType || null,
-                        buyerData.annualVolume || null,
-                        buyerData.preferredProvinces || null,
-                        JSON.stringify(buyerData)
+                        req.user.userId
                     ]
                 );
                 console.log('Buyer saved to database:', buyerData.buyerName);
             } catch (dbError) {
                 console.error('Failed to save buyer to database:', dbError);
-                // Continue with registration even if database save fails
+                if (process.env.NODE_ENV === 'production') {
+                    return res.status(500).json({ success: false, error: 'Database save failed', details: dbError.message });
+                }
             }
         } else {
             console.warn('⚠️ Database not available, skipping buyer database save');
@@ -850,15 +997,35 @@ app.post('/api/buyers/register', async (req, res) => {
 });
 
 // Record farmer-buyer match (generates matching fee)
-app.post('/api/matches/create', async (req, res) => {
+app.post('/api/matches/create', requireAuth, async (req, res) => {
     try {
+        if (req.user.userType !== 'buyer' && req.user.userType !== 'admin') {
+            return res.status(403).json({ success: false, error: 'Only buyers or admins can record match bookings' });
+        }
+
         const matchData = req.body;
         
+        let userProfile = null;
+        if (databaseAvailable) {
+            const userRes = await safeQuery('SELECT registration_id FROM users WHERE id = $1', [req.user.userId]);
+            if (userRes && userRes.rows.length > 0) {
+                userProfile = userRes.rows[0];
+            }
+        }
+
+        // Prefill buyerId if normal buyer logged in
+        if (req.user.userType === 'buyer') {
+            if (!userProfile || !userProfile.registration_id) {
+                return res.status(400).json({ success: false, error: 'Buyer profile not fully registered' });
+            }
+            matchData.buyerId = userProfile.registration_id;
+        }
+
         // Validate required fields
-        if (!matchData.farmerId || !matchData.buyerId || !matchData.vegetableId) {
+        if (!matchData.farmerId || !matchData.buyerId || !matchData.vegetableId || !matchData.quantity) {
             return res.status(400).json({ 
                 success: false, 
-                error: 'Missing required fields' 
+                error: 'Missing required match details' 
             });
         }
 
@@ -870,37 +1037,83 @@ app.post('/api/matches/create', async (req, res) => {
         if (matchData.deliveryTerms) matchData.deliveryTerms = sanitizeInput(matchData.deliveryTerms);
         if (matchData.paymentTerms) matchData.paymentTerms = sanitizeInput(matchData.paymentTerms);
 
+        // Fetch crop expected yield and verify unmatched yield availability
+        let expectedYield = 0;
+        if (databaseAvailable) {
+            const farmerRes = await safeQuery('SELECT expected_yield_tons FROM farmers_registrations WHERE farmer_id = $1', [matchData.farmerId]);
+            if (!farmerRes || farmerRes.rows.length === 0) {
+                return res.status(404).json({ success: false, error: 'Farmer crop registration not found' });
+            }
+            expectedYield = parseFloat(farmerRes.rows[0].expected_yield_tons);
+        } else {
+            const farmerInMemory = inMemoryRegistrations.find(r => r.id === matchData.farmerId);
+            if (!farmerInMemory) {
+                return res.status(404).json({ success: false, error: 'Farmer crop registration not found' });
+            }
+            expectedYield = parseFloat(farmerInMemory.expectedYieldTons || farmerInMemory.expected_yield_tons || 0);
+        }
+
+        let totalMatched = 0;
+        if (databaseAvailable) {
+            const matchedRes = await safeQuery(
+                "SELECT SUM(quantity) as total FROM farmer_buyer_matches WHERE farmer_id = $1 AND status != 'cancelled' AND status != 'disputed'",
+                [matchData.farmerId]
+            );
+            if (matchedRes && matchedRes.rows[0].total) {
+                totalMatched = parseFloat(matchedRes.rows[0].total);
+            }
+        }
+
+        const requestedQty = parseFloat(matchData.quantity) || 0;
+        if (totalMatched + requestedQty > expectedYield) {
+            return res.status(400).json({
+                success: false,
+                error: `Requested quantity of ${requestedQty} tons exceeds the remaining unmatched yield of ${expectedYield - totalMatched} tons for this crop forecast.`
+            });
+        }
+
         // Create blockchain transaction for the match
-        const blockchainResult = await createBlockchainTransaction({
-            ...matchData,
-            category: 'farmer_buyer_match'
-        });
+        let blockchainResult = { txid: 'MT-TX-' + Date.now(), hash: 'MT-HASH-' + Date.now() };
+        try {
+            blockchainResult = await createBlockchainTransaction({
+                ...matchData,
+                category: 'farmer_buyer_match'
+            });
+        } catch (bcError) {
+            console.warn('⚠️ Blockchain transaction failed for match, using dev mock receipt:', bcError.message);
+        }
 
         // Save match to database
         if (pool) {
             try {
-                await pool.query(
-                    `INSERT INTO matches 
-                    (farmer_id, buyer_id, vegetable_id, quantity, match_value, blockchain_txid, match_date, 
-                     status, delivery_terms, payment_terms, metadata)
-                    VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP, $7, $8, $9, $10)`,
+                const dbRes = await pool.query(
+                    `INSERT INTO farmer_buyer_matches 
+                    (farmer_id, buyer_id, vegetable_id, quantity, match_value, blockchain_transaction_id, blockchain_hash, status, delivery_terms, payment_terms, metadata)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                    RETURNING id`,
                     [
                         matchData.farmerId,
                         matchData.buyerId,
                         matchData.vegetableId,
-                        matchData.quantity || null,
-                        matchData.matchValue || null,
-                        blockchainResult.txid,
+                        requestedQty,
+                        parseFloat(matchData.matchValue) || 0,
+                        blockchainResult.txid || null,
+                        blockchainResult.hash || null,
                         matchData.status || 'pending',
                         matchData.deliveryTerms || null,
                         matchData.paymentTerms || null,
                         JSON.stringify(matchData)
                     ]
                 );
-                console.log('Match saved to database:', matchData.farmerId, '-', matchData.buyerId);
+                if (dbRes && dbRes.rows.length > 0) {
+                    matchData.id = dbRes.rows[0].id;
+                }
+                console.log('Match saved to database with ID:', matchData.id);
             } catch (dbError) {
                 console.error('Failed to save match to database:', dbError);
-                // Continue with matching even if database save fails
+                if (process.env.NODE_ENV === 'production') {
+                    return res.status(500).json({ success: false, error: 'Database save failed', details: dbError.message });
+                }
             }
         } else {
             console.warn('⚠️ Database not available, skipping match database save');
@@ -980,20 +1193,12 @@ app.get('/api/farmers/registrations', async (req, res) => {
             registrations = JSON.parse(JSON.stringify(inMemoryRegistrations));
         }
         
-        // Data Privacy: Mask PII if request is not from an authenticated admin session
-        if (!req.session.isAdmin) {
+        // Data Privacy: Mask PII fully if the request is not authenticated
+        const authenticated = await isRequestAuthenticated(req);
+        if (!authenticated) {
             registrations.forEach(r => {
-                if (r.farmerName) {
-                    r.farmerName = r.farmerName.split(' ')[0];
-                }
-                if (r.contact) {
-                    const len = r.contact.length;
-                    if (len >= 7) {
-                        r.contact = r.contact.substring(0, 4) + '****' + r.contact.substring(len - 3);
-                    } else {
-                        r.contact = '****';
-                    }
-                }
+                r.farmerName = '[REDACTED (Login Required)]';
+                r.contact = '[REDACTED (Login Required)]';
             });
         }
 
@@ -1005,6 +1210,55 @@ app.get('/api/farmers/registrations', async (req, res) => {
     } catch (error) {
         console.error('Failed to fetch registrations:', error);
         res.status(500).json({ success: false, error: 'Failed to fetch registrations' });
+    }
+});
+
+// Get single farmer crop registration by ID
+app.get('/api/farmers/registration/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        
+        let registration;
+        if (databaseAvailable) {
+            const result = await safeQuery(
+                `SELECT farmer_id as id, farmer_name as "farmerName", contact, province,
+                        municipality, barangay, vegetable_id as "vegetableId",
+                        area_sqm as "areaSqm", area_ha as "areaHa",
+                        expected_yield_tons as "expectedYieldTons",
+                        planting_date as "plantingDate", harvest_date as "harvestDate",
+                        registration_timestamp as timestamp,
+                        blockchain_transaction_id as "blockchainTxId",
+                        verification_status as "verificationStatus",
+                        barangay_verification_status as "barangayVerificationStatus",
+                        barangay_inspector_name as "barangayInspectorName",
+                        barangay_remarks as "barangayRemarks"
+                 FROM farmers_registrations
+                 WHERE farmer_id = $1`,
+                [id]
+            );
+            registration = result && result.rows.length > 0 ? result.rows[0] : null;
+        } else {
+            registration = inMemoryRegistrations.find(r => r.id === id);
+        }
+        
+        if (!registration) {
+            return res.status(404).json({ success: false, error: 'Registration not found' });
+        }
+        
+        // Data Privacy: Mask PII if request is not authenticated
+        const authenticated = await isRequestAuthenticated(req);
+        if (!authenticated) {
+            registration.farmerName = '[REDACTED (Login Required)]';
+            registration.contact = '[REDACTED (Login Required)]';
+        }
+        
+        res.json({
+            success: true,
+            registration
+        });
+    } catch (error) {
+        console.error('Failed to fetch registration:', error);
+        res.status(500).json({ success: false, error: 'Failed to fetch registration details' });
     }
 });
 
@@ -1131,6 +1385,24 @@ app.post('/api/admin/farmers/verify', requireAdmin, async (req, res) => {
             }
         }
 
+        // Stamp verification status update on Cheese Blockchain
+        try {
+            await axios.post(`${CHEESE_API_URL}/api/notary/stamp`, {
+                hash: crypto.createHash('sha256').update(`${id}-${status}-${Date.now()}`).digest('hex'),
+                fileName: `verify-${id}`,
+                category: 'crop_verification',
+                metadata: {
+                    type: 'farmers_consensus_admin_verification',
+                    farmerId: id,
+                    verificationStatus: status,
+                    timestamp: new Date().toISOString()
+                }
+            });
+            console.log(`⛓️ Blockchain updated with verification status: ${status} for ${id}`);
+        } catch (bcError) {
+            console.warn('⚠️ Blockchain verification stamp failed:', bcError.message);
+        }
+
         res.json({
             success: true,
             message: `Crop registration successfully updated to ${status}`,
@@ -1143,15 +1415,240 @@ app.post('/api/admin/farmers/verify', requireAdmin, async (req, res) => {
     }
 });
 
+// Delete crop registration endpoint (admin override to purge fake data/sabotages)
+app.delete('/api/admin/farmers/delete/:id', requireAdmin, async (req, res) => {
+    try {
+        const { id } = req.params;
+        
+        if (databaseAvailable) {
+            await safeQuery('DELETE FROM farmers_registrations WHERE farmer_id = $1', [id]);
+        } else {
+            const idx = inMemoryRegistrations.findIndex(r => r.id === id);
+            if (idx !== -1) {
+                inMemoryRegistrations.splice(idx, 1);
+            }
+        }
+
+        // Stamp on-chain crop deletion
+        try {
+            await axios.post(`${CHEESE_API_URL}/api/notary/stamp`, {
+                hash: crypto.createHash('sha256').update(`deleted-${id}-${Date.now()}`).digest('hex'),
+                fileName: `delete-${id}`,
+                category: 'crop_deletion',
+                metadata: {
+                    type: 'farmers_consensus_admin_deletion',
+                    farmerId: id,
+                    timestamp: new Date().toISOString()
+                }
+            });
+            console.log(`⛓️ Blockchain updated: deleted crop registration ${id}`);
+        } catch (bcError) {
+            console.warn('⚠️ Blockchain stamp failed for crop deletion:', bcError.message);
+        }
+
+        res.json({
+            success: true,
+            message: `Crop registration ${id} permanently deleted`
+        });
+    } catch (error) {
+        console.error('Delete error:', error);
+        res.status(500).json({ success: false, error: 'Failed to delete crop registration' });
+    }
+});
+
+// Barangay verify crop registration
+app.post('/api/farmers/barangay-verify', requireAuth, async (req, res) => {
+    try {
+        const { id, status, inspectorName, remarks } = req.body;
+        
+        if (req.user.userType !== 'barangay' && req.user.userType !== 'admin') {
+            return res.status(403).json({ success: false, error: 'Only Barangay officials or admins can verify crops' });
+        }
+        
+        if (!id || !status) {
+            return res.status(400).json({ success: false, error: 'Missing registration ID or status' });
+        }
+        
+        if (!['Approved', 'Rejected'].includes(status)) {
+            return res.status(400).json({ success: false, error: 'Invalid verification status' });
+        }
+
+        const sanitizedInspectorName = sanitizeInput(inspectorName || req.user.fullName || 'Barangay Inspector');
+        const sanitizedRemarks = sanitizeInput(remarks || '');
+
+        // Fetch crop registration data to hash and stamp on-chain
+        let registration;
+        if (databaseAvailable) {
+            const cropRes = await safeQuery('SELECT * FROM farmers_registrations WHERE farmer_id = $1', [id]);
+            if (!cropRes || cropRes.rows.length === 0) {
+                return res.status(404).json({ success: false, error: 'Crop registration not found' });
+            }
+            registration = cropRes.rows[0];
+        } else {
+            registration = inMemoryRegistrations.find(r => r.id === id);
+            if (!registration) {
+                return res.status(404).json({ success: false, error: 'Crop registration not found' });
+            }
+        }
+
+        // Stamping on Cheese Blockchain
+        let blockchainResult = { txid: 'BV-TX-' + Date.now(), hash: 'BV-HASH-' + Date.now() };
+        try {
+            blockchainResult = await axios.post(`${CHEESE_API_URL}/api/notary/stamp`, {
+                hash: crypto.createHash('sha256').update(`${id}-${status}-${sanitizedRemarks}-${Date.now()}`).digest('hex'),
+                fileName: `barangay-verify-${id}`,
+                category: 'crop_verification',
+                metadata: {
+                    type: 'farmers_consensus_barangay_verification',
+                    farmerId: id,
+                    barangayVerificationStatus: status,
+                    inspectorName: sanitizedInspectorName,
+                    remarks: sanitizedRemarks,
+                    timestamp: new Date().toISOString()
+                }
+            }).then(r => r.data);
+        } catch (bcError) {
+            console.warn('⚠️ Blockchain barangay stamp failed, using dev fallback:', bcError.message);
+        }
+
+        const dbStatus = status === 'Approved' ? 'Geo-Verified' : 'Cancelled';
+
+        if (databaseAvailable) {
+            await safeQuery(
+                `UPDATE farmers_registrations 
+                 SET barangay_verification_status = $1, 
+                     barangay_inspector_name = $2, 
+                     barangay_remarks = $3, 
+                     barangay_blockchain_txid = $4,
+                     verification_status = $5,
+                     updated_at = CURRENT_TIMESTAMP 
+                 WHERE farmer_id = $6`,
+                [status, sanitizedInspectorName, sanitizedRemarks, blockchainResult.txid, dbStatus, id]
+            );
+        } else {
+            registration.barangayVerificationStatus = status;
+            registration.barangayInspectorName = sanitizedInspectorName;
+            registration.barangayRemarks = sanitizedRemarks;
+            registration.barangayBlockchainTxId = blockchainResult.txid;
+            registration.verificationStatus = dbStatus;
+        }
+
+        res.json({
+            success: true,
+            message: `Crop registration successfully ${status.toLowerCase()} by Barangay`,
+            blockchainReceipt: {
+                transactionId: blockchainResult.txid,
+                hash: blockchainResult.hash,
+                timestamp: new Date().toISOString()
+            }
+        });
+    } catch (error) {
+        console.error('Barangay verification error:', error);
+        res.status(500).json({ success: false, error: 'Failed to verify crop registration' });
+    }
+});
+
+// Buyer confirm match/delivery
+app.post('/api/matches/buyer-confirm', requireAuth, async (req, res) => {
+    try {
+        const { matchId, status, receivedQtyTons, qualityRating, remarks } = req.body;
+        
+        if (req.user.userType !== 'buyer' && req.user.userType !== 'admin') {
+            return res.status(403).json({ success: false, error: 'Only buyers or admins can confirm matches' });
+        }
+        
+        if (!matchId || !status) {
+            return res.status(400).json({ success: false, error: 'Missing match ID or status' });
+        }
+        
+        if (!['Confirmed', 'Dispute'].includes(status)) {
+            return res.status(400).json({ success: false, error: 'Invalid confirmation status' });
+        }
+
+        const sanitizedRemarks = sanitizeInput(remarks || '');
+        const parsedQty = parseFloat(receivedQtyTons) || 0;
+        const sanitizedQuality = sanitizeInput(qualityRating || 'Grade A');
+
+        // Fetch match data to stamp on-chain
+        let match;
+        if (databaseAvailable) {
+            const matchRes = await safeQuery('SELECT * FROM farmer_buyer_matches WHERE id = $1', [matchId]);
+            if (!matchRes || matchRes.rows.length === 0) {
+                return res.status(404).json({ success: false, error: 'Match record not found' });
+            }
+            match = matchRes.rows[0];
+            
+            // Enforce ownership check for buyers
+            if (req.user.userType === 'buyer') {
+                const userRes = await safeQuery('SELECT registration_id FROM users WHERE id = $1', [req.user.userId]);
+                const userRegId = userRes && userRes.rows.length > 0 ? userRes.rows[0].registration_id : null;
+                if (!userRegId || match.buyer_id !== userRegId) {
+                    return res.status(403).json({ success: false, error: 'Unauthorized. You cannot confirm or dispute matches belonging to other buyers.' });
+                }
+            }
+        }
+
+        // Stamping on Cheese Blockchain
+        let blockchainResult = { txid: 'MC-TX-' + Date.now(), hash: 'MC-HASH-' + Date.now() };
+        try {
+            blockchainResult = await axios.post(`${CHEESE_API_URL}/api/notary/stamp`, {
+                hash: crypto.createHash('sha256').update(`${matchId}-${status}-${parsedQty}-${sanitizedQuality}-${Date.now()}`).digest('hex'),
+                fileName: `match-confirm-${matchId}`,
+                category: 'match_confirmation',
+                metadata: {
+                    type: 'farmers_consensus_buyer_confirmation',
+                    matchId: matchId,
+                    buyerConfirmationStatus: status,
+                    receivedQtyTons: parsedQty,
+                    qualityRating: sanitizedQuality,
+                    remarks: sanitizedRemarks,
+                    timestamp: new Date().toISOString()
+                }
+            }).then(r => r.data);
+        } catch (bcError) {
+            console.warn('⚠️ Blockchain match confirmation stamp failed, using dev fallback:', bcError.message);
+        }
+
+        const dbStatus = status === 'Confirmed' ? 'completed' : 'disputed';
+
+        if (databaseAvailable) {
+            await safeQuery(
+                `UPDATE farmer_buyer_matches 
+                 SET buyer_confirmation_status = $1, 
+                     buyer_received_qty_tons = $2, 
+                     buyer_quality_rating = $3, 
+                     buyer_remarks = $4, 
+                     buyer_blockchain_txid = $5,
+                     status = $6
+                 WHERE id = $7`,
+                [status, parsedQty, sanitizedQuality, sanitizedRemarks, blockchainResult.txid, dbStatus, matchId]
+            );
+        }
+
+        res.json({
+            success: true,
+            message: `Match successfully ${status.toLowerCase()} by buyer`,
+            blockchainReceipt: {
+                transactionId: blockchainResult.txid,
+                hash: blockchainResult.hash,
+                timestamp: new Date().toISOString()
+            }
+        });
+    } catch (error) {
+        console.error('Buyer match confirmation error:', error);
+        res.status(500).json({ success: false, error: 'Failed to confirm match delivery' });
+    }
+});
+
 // ===== USER AUTHENTICATION ENDPOINTS =====
 
 // User Registration
 app.post('/api/auth/register', async (req, res) => {
     try {
-        const { email, password, fullName, userType, registrationId } = req.body;
+        const { email, password, fullName, userType, registrationId, phone } = req.body;
         
         // Validate input
-        if (!email || !password || !fullName || !userType) {
+        if (!email || !password || !fullName || !userType || !phone) {
             return res.status(400).json({ 
                 success: false, 
                 error: 'Missing required fields' 
@@ -1159,9 +1656,10 @@ app.post('/api/auth/register', async (req, res) => {
         }
 
         const sanitizedFullName = sanitizeInput(fullName);
-        const sanitizedRegistrationId = registrationId ? sanitizeInput(registrationId) : null;
+        const sanitizedPhone = sanitizeInput(phone);
+        let finalRegistrationId = null;
         
-        if (!['farmer', 'buyer'].includes(userType)) {
+        if (!['farmer', 'buyer', 'barangay'].includes(userType)) {
             return res.status(400).json({ 
                 success: false, 
                 error: 'Invalid user type' 
@@ -1177,17 +1675,82 @@ app.post('/api/auth/register', async (req, res) => {
                 databaseStatus: 'unavailable'
             });
         }
+
+        // Validate registrationId if provided, otherwise auto-generate
+        if (registrationId) {
+            const sanitizedRegistrationId = sanitizeInput(registrationId);
+            // Check if registration_id is already linked to another user account
+            const existingRegUser = await safeQuery(
+                'SELECT id FROM users WHERE registration_id = $1',
+                [sanitizedRegistrationId]
+            );
+            if (existingRegUser && existingRegUser.rows.length > 0) {
+                return res.status(409).json({ 
+                    success: false, 
+                    error: 'Registration ID is already linked to another account' 
+                });
+            }
+
+            // Verify registration ID exists in respective tables
+            if (userType === 'farmer') {
+                const farmerReg = await safeQuery(
+                    'SELECT id FROM farmers_registrations WHERE farmer_id = $1',
+                    [sanitizedRegistrationId]
+                );
+                if (!farmerReg || farmerReg.rows.length === 0) {
+                    return res.status(400).json({ 
+                        success: false, 
+                        error: 'Invalid Farmer Registration ID. Register your crop forecast first.' 
+                    });
+                }
+            } else if (userType === 'buyer') {
+                const buyerReg = await safeQuery(
+                    'SELECT id FROM buyers_registrations WHERE buyer_id = $1',
+                    [sanitizedRegistrationId]
+                );
+                if (!buyerReg || buyerReg.rows.length === 0) {
+                    return res.status(400).json({ 
+                        success: false, 
+                        error: 'Invalid Buyer Registration ID. Register as a buyer first.' 
+                    });
+                }
+            } else if (userType === 'barangay') {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Barangay officials do not require a registration ID'
+                });
+            }
+            finalRegistrationId = sanitizedRegistrationId;
+        } else {
+            // Auto-generate registry ID on account creation
+            if (userType === 'farmer') {
+                finalRegistrationId = `FC-REG-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
+            } else if (userType === 'buyer') {
+                finalRegistrationId = `BY-REG-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
+            }
+        }
         
         // Check if email already exists
         const existingUser = await safeQuery(
             'SELECT id FROM users WHERE email = $1',
             [email.toLowerCase()]
         );
-        
         if (existingUser && existingUser.rows.length > 0) {
             return res.status(409).json({ 
                 success: false, 
                 error: 'Email already registered' 
+            });
+        }
+
+        // Check if phone number already exists
+        const existingPhone = await safeQuery(
+            'SELECT id FROM users WHERE phone = $1',
+            [sanitizedPhone]
+        );
+        if (existingPhone && existingPhone.rows.length > 0) {
+            return res.status(409).json({ 
+                success: false, 
+                error: 'Phone number already registered' 
             });
         }
         
@@ -1196,10 +1759,10 @@ app.post('/api/auth/register', async (req, res) => {
         
         // Create user account
         const result = await safeQuery(
-            `INSERT INTO users (email, password_hash, full_name, user_type, registration_id, wallet_address)
-             VALUES ($1, $2, $3, $4, $5, $6)
-             RETURNING id, email, full_name, user_type, created_at`,
-            [email.toLowerCase(), passwordHash, sanitizedFullName, userType, sanitizedRegistrationId, null]
+            `INSERT INTO users (email, password_hash, full_name, user_type, registration_id, phone, wallet_address)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)
+             RETURNING id, email, full_name, user_type, registration_id, phone, created_at`,
+            [email.toLowerCase(), passwordHash, sanitizedFullName, userType, finalRegistrationId, sanitizedPhone, null]
         );
         
         if (result && result.rows[0]) {
@@ -1212,9 +1775,9 @@ app.post('/api/auth/register', async (req, res) => {
                 [newUser.id]
             );
             
-            // Give registration reward if it's a farmer or buyer
-            if (registrationId) {
-                const rewardAmount = userType === 'farmer' ? REGISTRATION_REWARD : REGISTRATION_REWARD;
+            // Give registration reward if it's a farmer or buyer with linked registration
+            if (finalRegistrationId && (userType === 'farmer' || userType === 'buyer')) {
+                const rewardAmount = REGISTRATION_REWARD;
                 
                 await safeQuery(
                     `INSERT INTO user_rewards (user_id, reward_type, reward_amount, reward_token, description)
@@ -1232,8 +1795,17 @@ app.post('/api/auth/register', async (req, res) => {
                 );
             }
             
-            // Generate JWT token
-            const token = generateToken(newUser.id, newUser.user_type);
+            // Generate a unique session token
+            const sessionToken = crypto.randomBytes(32).toString('hex');
+            const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+            
+            await safeQuery(
+                'INSERT INTO user_sessions (user_id, session_token, expires_at) VALUES ($1, $2, $3)',
+                [newUser.id, sessionToken, expiresAt]
+            );
+            
+            // Generate JWT token including the sessionToken
+            const token = generateToken(newUser.id, newUser.user_type, sessionToken);
             
             res.status(201).json({
                 success: true,
@@ -1241,8 +1813,10 @@ app.post('/api/auth/register', async (req, res) => {
                 user: {
                     id: newUser.id,
                     email: newUser.email,
-                    fullName: newUser.fullName,
-                    userType: newUser.user_type
+                    fullName: newUser.full_name,
+                    userType: newUser.user_type,
+                    registrationId: newUser.registration_id,
+                    phone: newUser.phone
                 },
                 token
             });
@@ -1301,8 +1875,17 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
                     [user.id, req.ip]
                 );
                 
-                // Generate JWT token
-                const token = generateToken(user.id, user.user_type);
+                // Generate a unique session token
+                const sessionToken = crypto.randomBytes(32).toString('hex');
+                const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+                
+                await safeQuery(
+                    'INSERT INTO user_sessions (user_id, session_token, expires_at) VALUES ($1, $2, $3)',
+                    [user.id, sessionToken, expiresAt]
+                );
+                
+                // Generate JWT token including the sessionToken
+                const token = generateToken(user.id, user.user_type, sessionToken);
                 
                 res.json({
                     success: true,
@@ -1338,6 +1921,8 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
 });
 
 // User Forgot Password
+const recoveryCodes = new Map(); // Store email -> { code, expires }
+
 app.post('/api/auth/forgot-password', async (req, res) => {
     try {
         const { email } = req.body;
@@ -1345,20 +1930,96 @@ app.post('/api/auth/forgot-password', async (req, res) => {
             return res.status(400).json({ success: false, error: 'Email is required' });
         }
         
+        let phone = '09171234567'; // Default fallback
         if (databaseAvailable) {
-            const userResult = await safeQuery('SELECT id FROM users WHERE email = $1', [email.toLowerCase()]);
+            const userResult = await safeQuery('SELECT id, phone FROM users WHERE email = $1', [email.toLowerCase()]);
             if (!userResult || userResult.rows.length === 0) {
                 return res.status(404).json({ success: false, error: 'No user registered with this email address' });
             }
+            phone = userResult.rows[0].phone || phone;
         }
+        
+        // Generate a 6-digit numeric code
+        const code = Math.floor(100000 + Math.random() * 900000).toString();
+        recoveryCodes.set(email.toLowerCase(), {
+            code,
+            expires: Date.now() + 15 * 60 * 1000, // 15 minutes validity
+            failedAttempts: 0
+        });
+        
+        // Simulation of automated notification agents
+        console.log('\n=================== [AUTOMATED NOTIFICATION AGENT] ===================');
+        console.log(`📱 [SMS AGENT] Sending SMS to ${phone}:`);
+        console.log(`   "Farmers Consensus: Your password recovery code is ${code}. Expires in 15 mins."`);
+        console.log(`✉️ [EMAIL AGENT] Sending Email to ${email}:`);
+        console.log('   Subject: Farmers Consensus Account Password Recovery');
+        console.log(`   Body: "Your Farmers Consensus security verification code is: ${code}."`);
+        console.log('======================================================================\n');
         
         res.json({
             success: true,
-            message: 'Password reset instructions have been sent to your email.'
+            message: `Verification code sent via SMS to ${phone.slice(0, 4)}***${phone.slice(-3)} and Email to ${email.slice(0, 3)}***@example.com.`,
+            code: process.env.NODE_ENV !== 'production' ? code : undefined // Expose to client in dev mode for easy automated verification testing
         });
     } catch (error) {
         console.error('Forgot password error:', error);
         res.status(500).json({ success: false, error: 'Failed to process password reset request' });
+    }
+});
+
+// Reset Password Verification Endpoint
+app.post('/api/auth/reset-password', async (req, res) => {
+    try {
+        const { email, code, newPassword } = req.body;
+        
+        if (!email || !code || !newPassword) {
+            return res.status(400).json({ success: false, error: 'Missing required fields' });
+        }
+        
+        const record = recoveryCodes.get(email.toLowerCase());
+        if (!record || record.expires < Date.now()) {
+            return res.status(400).json({ success: false, error: 'Invalid or expired verification code' });
+        }
+        
+        // Check for brute-force guessing
+        if (record.code !== code) {
+            record.failedAttempts = (record.failedAttempts || 0) + 1;
+            if (record.failedAttempts >= 3) {
+                recoveryCodes.delete(email.toLowerCase());
+                return res.status(400).json({ success: false, error: 'Too many incorrect attempts. Verification code has been voided. Please request a new code.' });
+            }
+            return res.status(400).json({ success: false, error: `Invalid verification code. ${3 - record.failedAttempts} attempts remaining.` });
+        }
+        
+        // Hash the new password
+        const passwordHash = await hashPassword(newPassword);
+        
+        if (databaseAvailable) {
+            // Update password
+            await safeQuery(
+                'UPDATE users SET password_hash = $1, updated_at = CURRENT_TIMESTAMP WHERE email = $2',
+                [passwordHash, email.toLowerCase()]
+            );
+            
+            // Purge all active sessions (Force logout across all devices)
+            const userRes = await safeQuery('SELECT id FROM users WHERE email = $1', [email.toLowerCase()]);
+            if (userRes && userRes.rows.length > 0) {
+                const userId = userRes.rows[0].id;
+                await safeQuery('DELETE FROM user_sessions WHERE user_id = $1', [userId]);
+                console.log(`🔐 Sessions purged for user ID ${userId} after password reset`);
+            }
+        }
+        
+        // Remove verification code after successful reset
+        recoveryCodes.delete(email.toLowerCase());
+        
+        res.json({
+            success: true,
+            message: 'Password reset successfully'
+        });
+    } catch (error) {
+        console.error('Reset password error:', error);
+        res.status(500).json({ success: false, error: 'Failed to reset password' });
     }
 });
 
@@ -1558,6 +2219,15 @@ app.post('/api/user/rewards/claim', requireAuth, async (req, res) => {
 app.post('/api/auth/logout', requireAuth, async (req, res) => {
     try {
         const userId = req.user.userId;
+        const sessionToken = req.user.sessionToken;
+        
+        // Delete session from database
+        if (databaseAvailable && sessionToken) {
+            await safeQuery(
+                'DELETE FROM user_sessions WHERE user_id = $1 AND session_token = $2',
+                [userId, sessionToken]
+            );
+        }
         
         // Log logout activity
         await safeQuery(

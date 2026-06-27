@@ -204,7 +204,18 @@
         <div class="portal-grid">
           
           <!-- Registration Form Container -->
-          <div class="form-card card animate-fade-in">
+          <div class="form-card card animate-fade-in" style="position: relative;">
+            <div id="form-lock-overlay" class="form-lock-overlay">
+              <div class="lock-content">
+                <i data-lucide="lock" style="width: 48px; height: 48px; color: #f59e0b; margin-bottom: 16px; display: block; margin-left: auto; margin-right: auto;"></i>
+                <h4>Account Required</h4>
+                <p>You must register an account and login before registering your crop forecast. This protects the database from duplicate or fake data entry.</p>
+                <div style="display: flex; gap: 12px; margin-top: 20px; justify-content: center;">
+                  <button type="button" class="btn btn-primary" onclick="window.app.openModal('register-modal')" style="background-color: var(--color-primary); color: white; padding: 10px 18px; border-radius: 8px; font-weight: 500; cursor: pointer; border: none;">Create Account</button>
+                  <button type="button" class="btn btn-secondary" onclick="window.app.openModal('login-modal')" style="background-color: rgba(255, 255, 255, 0.08); color: white; padding: 10px 18px; border-radius: 8px; font-weight: 500; cursor: pointer; border: 1px solid rgba(255, 255, 255, 0.15);">Login</button>
+                </div>
+              </div>
+            </div>
             <div class="card-header">
               <div class="card-title-icon green">
                 <i data-lucide="user-plus"></i>
@@ -502,7 +513,18 @@
         </div>
 
         <!-- Buyer Registration Form -->
-        <div class="form-section card animate-fade-in">
+        <div class="form-section card animate-fade-in" style="position: relative;">
+          <div id="buyer-form-lock-overlay" class="form-lock-overlay">
+            <div class="lock-content">
+              <i data-lucide="lock" style="width: 48px; height: 48px; color: #f59e0b; margin-bottom: 16px; display: block; margin-left: auto; margin-right: auto;"></i>
+              <h4>Account Required</h4>
+              <p>You must register an account and login before completing your buyer profile. This protects the database from duplicate or fake data entry.</p>
+              <div style="display: flex; gap: 12px; margin-top: 20px; justify-content: center;">
+                <button type="button" class="btn btn-primary" onclick="window.app.openModal('register-modal')" style="background-color: var(--color-primary); color: white; padding: 10px 18px; border-radius: 8px; font-weight: 500; cursor: pointer; border: none;">Create Account</button>
+                <button type="button" class="btn btn-secondary" onclick="window.app.openModal('login-modal')" style="background-color: rgba(255, 255, 255, 0.08); color: white; padding: 10px 18px; border-radius: 8px; font-weight: 500; cursor: pointer; border: 1px solid rgba(255, 255, 255, 0.15);">Login</button>
+              </div>
+            </div>
+          </div>
           <div class="form-header">
             <div class="form-title-icon">
               <i data-lucide="user-plus"></i>
@@ -950,6 +972,49 @@
           </div>
         </div>
 
+        <!-- Barangay Verification Console (Dynamic, shown for barangay userType) -->
+        <div class="dashboard-section card hidden" id="barangay-console-card" style="margin-top: 24px;">
+          <div class="section-header">
+            <h3>🌾 Barangay Crop Verification Console</h3>
+            <p style="font-size: 0.9rem; color: var(--color-text-secondary); margin-top: 4px;">Verify physical farming intentions in your Barangay</p>
+          </div>
+          <div class="table-scroll-container">
+            <table class="ledger-table">
+              <thead>
+                <tr>
+                  <th>Registration ID</th>
+                  <th>Location</th>
+                  <th>Crop</th>
+                  <th>Area & Expected Yield</th>
+                  <th>Inspector Name</th>
+                  <th>Remarks</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="barangay-verification-tbody">
+                <!-- Dynamic pending registrations rendered here -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Buyer Confirmation Console (Dynamic, shown for buyer userType) -->
+        <div class="dashboard-section card hidden" id="buyer-console-card" style="margin-top: 24px;">
+          <div class="section-header">
+            <h3>🛒 Buyer Crop Purchase & Confirmation Console</h3>
+            <p style="font-size: 0.9rem; color: var(--color-text-secondary); margin-top: 4px;">Confirm delivery, quantity, and quality of harvest purchases</p>
+          </div>
+          
+          <div style="margin-top: 16px; display: flex; gap: 12px; align-items: center; max-width: 500px;">
+            <input type="text" id="buyer-lookup-id" placeholder="Enter Farmer Registration ID (e.g., FC-xxxx)" style="flex: 1; padding: 10px; border-radius: 8px; border: 1px solid var(--color-border); background: var(--color-surface); color: var(--color-text);">
+            <button class="btn btn-primary" id="buyer-lookup-btn" style="padding: 10px 16px;">Search Crop</button>
+          </div>
+
+          <div id="buyer-lookup-result" class="hidden" style="margin-top: 20px; padding: 16px; border-radius: 8px; background: rgba(59, 130, 246, 0.05); border: 1px solid rgba(59, 130, 246, 0.2);">
+            <!-- Dynamic lookup details showing farmer name, location, crop, expected yield -->
+          </div>
+        </div>
+
       </section>
 
     </main>
@@ -1056,6 +1121,7 @@
         </button>
       </div>
       
+      <!-- Step 1: Request Recovery Code -->
       <form id="forgot-password-form" class="auth-form">
         <div class="form-group">
           <label for="forgot-email">Email Address</label>
@@ -1063,8 +1129,27 @@
         </div>
         
         <button type="submit" class="btn btn-primary btn-full">
-          <span>Send Reset Link</span>
+          <span>Send Recovery Code</span>
           <i data-lucide="send"></i>
+        </button>
+      </form>
+
+      <!-- Step 2: Verification & Reset (Hidden by default) -->
+      <form id="reset-password-form" class="auth-form hidden">
+        <div class="form-group">
+          <label for="reset-code">Verification Code (6-digit OTP)</label>
+          <input type="text" id="reset-code" name="code" placeholder="123456" required pattern="^\d{6}$">
+          <small style="display: block; margin-top: 4px; font-size: 0.8rem; color: #888;">Simulated OTP sent via SMS and email.</small>
+        </div>
+
+        <div class="form-group">
+          <label for="reset-new-password">New Password</label>
+          <input type="password" id="reset-new-password" name="newPassword" placeholder="Enter new password" required minlength="6">
+        </div>
+        
+        <button type="submit" class="btn btn-primary btn-full">
+          <span>Reset Password & Login</span>
+          <i data-lucide="check"></i>
         </button>
       </form>
       
@@ -1095,6 +1180,11 @@
           <label for="register-email">Email Address</label>
           <input type="email" id="register-email" name="email" placeholder="you@example.com" required>
         </div>
+
+        <div class="form-group">
+          <label for="register-phone">Phone Number</label>
+          <input type="tel" id="register-phone" name="phone" placeholder="09171234567" required pattern="^09\d{9}$">
+        </div>
         
         <div class="form-group">
           <label for="register-password">Password</label>
@@ -1107,6 +1197,7 @@
             <option value="">Select your role</option>
             <option value="farmer">Farmer</option>
             <option value="buyer">Buyer</option>
+            <option value="barangay">Barangay Official</option>
           </select>
         </div>
         

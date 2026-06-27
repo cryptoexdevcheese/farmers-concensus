@@ -1945,6 +1945,12 @@ const app = {
       forgotPasswordForm.addEventListener('submit', (e) => this.handleForgotPassword(e));
     }
     
+    // Reset password form handler
+    const resetPasswordForm = document.getElementById('reset-password-form');
+    if (resetPasswordForm) {
+      resetPasswordForm.addEventListener('submit', (e) => this.handleResetPassword(e));
+    }
+    
     // Modal handlers
     this.initModalHandlers();
   },
@@ -2228,7 +2234,8 @@ const app = {
       password: formData.get('password'),
       fullName: formData.get('fullName'),
       userType: formData.get('userType'),
-      registrationId: formData.get('registrationId') || null
+      registrationId: formData.get('registrationId') || null,
+      phone: formData.get('phone')
     };
     
     try {
@@ -2340,14 +2347,72 @@ const app = {
       const result = await response.json();
       
       if (result.success) {
-        this.closeModal('forgot-password-modal');
-        this.showNotification(result.message || 'Password reset instructions sent to your email.', 'success');
-        form.reset();
+        this.resetEmail = email; // Store email for step 2
+        this.showNotification(result.message || 'Verification code sent.', 'success');
+        
+        // Hide step 1, show step 2
+        document.getElementById('forgot-password-form').classList.add('hidden');
+        const resetForm = document.getElementById('reset-password-form');
+        if (resetForm) {
+          resetForm.classList.remove('hidden');
+          // Prefill OTP in development/localhost mode for seamless testing
+          if (result.code) {
+            const codeInput = document.getElementById('reset-code');
+            if (codeInput) codeInput.value = result.code;
+            this.showNotification(`[DEV] Autofilled recovery OTP: ${result.code}`, 'info');
+          }
+        }
       } else {
         this.showNotification(result.error || 'Failed to request password reset', 'error');
       }
     } catch (error) {
       console.error('Forgot password error:', error);
+      this.showNotification('An error occurred. Please try again.', 'error');
+    }
+  },
+
+  // Handle password reset validation (Step 2)
+  async handleResetPassword(event) {
+    event.preventDefault();
+    
+    const form = event.target;
+    const formData = new FormData(form);
+    const code = formData.get('code');
+    const newPassword = formData.get('newPassword');
+    const email = this.resetEmail;
+    
+    if (!email) {
+      this.showNotification('Session lost. Please request code again.', 'error');
+      return;
+    }
+    
+    try {
+      const response = await fetch('/api/auth/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, code, newPassword })
+      });
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        this.closeModal('forgot-password-modal');
+        this.showNotification('Password updated successfully. You can now login.', 'success');
+        
+        // Reset forms back to step 1
+        document.getElementById('forgot-password-form').classList.remove('hidden');
+        document.getElementById('reset-password-form').classList.add('hidden');
+        
+        form.reset();
+        document.getElementById('forgot-password-form').reset();
+        
+        // Open login modal
+        this.openModal('login-modal');
+      } else {
+        this.showNotification(result.error || 'Failed to reset password', 'error');
+      }
+    } catch (error) {
+      console.error('Reset password error:', error);
       this.showNotification('An error occurred. Please try again.', 'error');
     }
   },
@@ -2667,6 +2732,10 @@ const app = {
     const userMenu = document.querySelectorAll('.user-menu');
     const loginRequiredElements = document.querySelectorAll('.login-required');
     
+    const lockOverlay = document.getElementById('form-lock-overlay');
+    const buyerLockOverlay = document.getElementById('buyer-form-lock-overlay');
+    const inputsToReset = ['farmer-name', 'farmer-contact', 'buyer-name', 'buyer-email', 'buyer-phone'];
+    
     if (isLoggedIn) {
       // Show user menu, hide auth buttons
       authButtons.forEach(btn => btn.style.display = 'none');
@@ -2683,6 +2752,32 @@ const app = {
           userNameElement.textContent = this.currentUser.fullName || this.currentUser.email;
         }
       });
+      
+      // Toggle form locks based on role
+      if (this.currentUser) {
+        if (this.currentUser.userType === 'farmer') {
+          if (lockOverlay) lockOverlay.classList.add('hidden');
+          const nameInput = document.getElementById('farmer-name');
+          if (nameInput) { nameInput.value = this.currentUser.fullName || ''; nameInput.readOnly = true; }
+          const contactInput = document.getElementById('farmer-contact');
+          if (contactInput) { contactInput.value = this.currentUser.phone || ''; contactInput.readOnly = true; }
+        } else if (this.currentUser.userType === 'buyer') {
+          if (buyerLockOverlay) buyerLockOverlay.classList.add('hidden');
+          const buyerNameInput = document.getElementById('buyer-name');
+          if (buyerNameInput) { buyerNameInput.value = this.currentUser.fullName || ''; buyerNameInput.readOnly = true; }
+          const buyerEmailInput = document.getElementById('buyer-email');
+          if (buyerEmailInput) { buyerEmailInput.value = this.currentUser.email || ''; buyerEmailInput.readOnly = true; }
+          const buyerPhoneInput = document.getElementById('buyer-phone');
+          if (buyerPhoneInput) { buyerPhoneInput.value = this.currentUser.phone || ''; buyerPhoneInput.readOnly = true; }
+        } else if (this.currentUser.userType === 'barangay') {
+          // Barangay has full view of analytics but doesn't write farmer/buyer logs
+          if (lockOverlay) lockOverlay.classList.remove('hidden');
+          if (buyerLockOverlay) buyerLockOverlay.classList.remove('hidden');
+        }
+      }
+      
+      // Load role specific verification consoles
+      this.updateRoleConsoles();
     } else {
       // Show auth buttons, hide user menu
       authButtons.forEach(btn => btn.style.display = 'flex');
@@ -2691,6 +2786,24 @@ const app = {
         menu.classList.remove('visible');
       });
       loginRequiredElements.forEach(el => el.classList.add('hidden'));
+      
+      // Show overlays to block anonymous actions
+      if (lockOverlay) lockOverlay.classList.remove('hidden');
+      if (buyerLockOverlay) buyerLockOverlay.classList.remove('hidden');
+      
+      // Reset input fields
+      inputsToReset.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+          el.value = '';
+          el.readOnly = false;
+        }
+      });
+      
+      const barangayConsole = document.getElementById('barangay-console-card');
+      const buyerConsole = document.getElementById('buyer-console-card');
+      if (barangayConsole) barangayConsole.classList.add('hidden');
+      if (buyerConsole) buyerConsole.classList.add('hidden');
     }
   },
 
@@ -3298,6 +3411,317 @@ const app = {
         }
       }
     });
+  },
+
+  // Update role-specific consoles (Barangay, Buyer)
+  async updateRoleConsoles() {
+    const barangayConsole = document.getElementById('barangay-console-card');
+    const buyerConsole = document.getElementById('buyer-console-card');
+    
+    if (!barangayConsole || !buyerConsole) return;
+    
+    // Hide both by default
+    barangayConsole.classList.add('hidden');
+    buyerConsole.classList.add('hidden');
+    
+    if (!this.currentUser) return;
+    
+    const role = this.currentUser.userType;
+    
+    if (role === 'barangay') {
+      barangayConsole.classList.remove('hidden');
+      await this.loadBarangayPendingCrops();
+    } else if (role === 'buyer') {
+      buyerConsole.classList.remove('hidden');
+      this.initBuyerConsole();
+    }
+  },
+
+  // Load pending crops for Barangay Official
+  async loadBarangayPendingCrops() {
+    const tbody = document.getElementById('barangay-verification-tbody');
+    if (!tbody) return;
+    
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align: center;">Loading pending crop registrations...</td></tr>';
+    
+    try {
+      const response = await fetch('/api/farmers/registrations');
+      const result = await response.json();
+      
+      if (result.success) {
+        // Filter to registrations with verificationStatus === 'Pending'
+        const pending = result.registrations.filter(r => r.verificationStatus === 'Pending');
+        
+        if (pending.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: var(--color-text-secondary);">No pending crop registrations to verify.</td></tr>';
+          return;
+        }
+        
+        tbody.innerHTML = '';
+        pending.forEach(r => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td><strong>${r.id}</strong></td>
+            <td>${r.barangay}, ${r.municipality}, ${r.province}</td>
+            <td>${this.getVegetableName(r.vegetableId)}</td>
+            <td>${r.areaHa} ha / <strong>${r.expectedYieldTons} Tons</strong></td>
+            <td>
+              <input type="text" class="inspector-name-input" id="inspector-${r.id}" placeholder="Inspector Name" style="padding: 4px 8px; border-radius: 4px; border: 1px solid var(--color-border); font-size: 0.85rem; width: 130px; background: var(--color-surface); color: var(--color-text);">
+            </td>
+            <td>
+              <input type="text" class="remarks-input" id="remarks-${r.id}" placeholder="Remarks" style="padding: 4px 8px; border-radius: 4px; border: 1px solid var(--color-border); font-size: 0.85rem; width: 150px; background: var(--color-surface); color: var(--color-text);">
+            </td>
+            <td style="display: flex; gap: 8px;">
+              <button class="btn btn-sm btn-primary verify-approve-btn" data-id="${r.id}" style="padding: 4px 8px; font-size: 0.8rem; background: #10b981; border-color: #10b981;">Approve</button>
+              <button class="btn btn-sm btn-outline verify-reject-btn" data-id="${r.id}" style="padding: 4px 8px; font-size: 0.8rem; border-color: #ef4444; color: #ef4444;">Reject</button>
+            </td>
+          `;
+          tbody.appendChild(tr);
+        });
+        
+        // Add event listeners
+        tbody.querySelectorAll('.verify-approve-btn').forEach(btn => {
+          btn.addEventListener('click', (e) => this.handleBarangayAction(e.target.dataset.id, 'Approved'));
+        });
+        tbody.querySelectorAll('.verify-reject-btn').forEach(btn => {
+          btn.addEventListener('click', (e) => this.handleBarangayAction(e.target.dataset.id, 'Rejected'));
+        });
+      } else {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: #ef4444;">Failed to load registrations.</td></tr>';
+      }
+    } catch (err) {
+      console.error('Failed to load pending crops:', err);
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: #ef4444;">Error loading crop registrations.</td></tr>';
+    }
+  },
+
+  // Handle Barangay Crop Verification Action
+  async handleBarangayAction(id, status) {
+    const inspectorInput = document.getElementById(`inspector-${id}`);
+    const remarksInput = document.getElementById(`remarks-${id}`);
+    
+    const inspectorName = inspectorInput ? inspectorInput.value.trim() : '';
+    const remarks = remarksInput ? remarksInput.value.trim() : '';
+    
+    try {
+      const response = await fetch('/api/farmers/barangay-verify', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.authToken}`
+        },
+        body: JSON.stringify({
+          id,
+          status,
+          inspectorName,
+          remarks
+        })
+      });
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        this.showNotification(`Crop registration ${id} successfully ${status === 'Approved' ? 'approved' : 'rejected'}!`, 'success');
+        await this.loadBarangayPendingCrops();
+        if (typeof this.loadLedgerData === 'function') {
+          this.loadLedgerData();
+        }
+      } else {
+        this.showNotification(result.error || 'Verification failed', 'error');
+      }
+    } catch (err) {
+      console.error('Barangay verify request error:', err);
+      this.showNotification('Request failed. Check server connection.', 'error');
+    }
+  },
+
+  // Vegetable ID helper mapping
+  getVegetableName(vegetableId) {
+    const veg = window.VEGETABLES ? window.VEGETABLES.find(v => v.id === vegetableId) : null;
+    return veg ? `${veg.emoji} ${veg.name}` : `🌱 ${vegetableId}`;
+  },
+
+  // Initialize Buyer Console
+  initBuyerConsole() {
+    const lookupBtn = document.getElementById('buyer-lookup-btn');
+    const lookupInput = document.getElementById('buyer-lookup-id');
+    const resultDiv = document.getElementById('buyer-lookup-result');
+    
+    if (!lookupBtn || !lookupInput || !resultDiv) return;
+    
+    // Clear display
+    resultDiv.innerHTML = '';
+    resultDiv.classList.add('hidden');
+    
+    // Lookup Button Click Handler
+    lookupBtn.onclick = async () => {
+      const regId = lookupInput.value.trim();
+      if (!regId) {
+        this.showNotification('Please enter a Farmer Registration ID', 'warning');
+        return;
+      }
+      
+      resultDiv.innerHTML = '<p style="text-align: center; color: var(--color-text-secondary);">Looking up crop details...</p>';
+      resultDiv.classList.remove('hidden');
+      
+      try {
+        const response = await fetch(`/api/farmers/registration/${encodeURIComponent(regId)}`);
+        const result = await response.json();
+        
+        if (result.success) {
+          const r = result.registration;
+          
+          let verifyBadge = '';
+          if (r.verificationStatus === 'Geo-Verified') {
+            verifyBadge = '<span class="status-badge status-verified">✓ Verified</span>';
+          } else if (r.verificationStatus === 'Pending') {
+            verifyBadge = '<span class="status-badge status-pending">🕒 Pending Verification</span>';
+          } else {
+            verifyBadge = `<span class="status-badge status-cancelled">✗ ${r.verificationStatus}</span>`;
+          }
+
+          resultDiv.innerHTML = `
+            <div style="display: flex; justify-content: space-between; border-bottom: 1px solid var(--color-border); padding-bottom: 12px; margin-bottom: 12px;">
+              <div>
+                <h4 style="font-size: 1.1rem; font-weight: 600;">Farmer ID: ${r.id}</h4>
+                <p style="font-size: 0.85rem; color: var(--color-text-secondary); margin-top: 2px;">Registered: ${new Date(r.timestamp).toLocaleDateString()}</p>
+              </div>
+              <div>
+                ${verifyBadge}
+              </div>
+            </div>
+            
+            <div class="grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
+              <div>
+                <span style="font-size: 0.8rem; color: var(--color-text-secondary); display: block;">Farmer Name (Masked)</span>
+                <strong>${r.farmerName}</strong>
+              </div>
+              <div>
+                <span style="font-size: 0.8rem; color: var(--color-text-secondary); display: block;">Location</span>
+                <strong>${r.barangay}, ${r.municipality}, ${r.province}</strong>
+              </div>
+              <div>
+                <span style="font-size: 0.8rem; color: var(--color-text-secondary); display: block;">Crop Variety</span>
+                <strong>${this.getVegetableName(r.vegetableId)}</strong>
+              </div>
+              <div>
+                <span style="font-size: 0.8rem; color: var(--color-text-secondary); display: block;">Expected Yield</span>
+                <strong>${r.expectedYieldTons} Tons</strong>
+              </div>
+            </div>
+            
+            <div style="border-top: 1px solid var(--color-border); padding-top: 16px; margin-top: 12px;">
+              <h5 style="font-weight: 600; font-size: 0.95rem; margin-bottom: 12px;">🚚 Confirm Harvest Delivery & Quality</h5>
+              
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+                <div>
+                  <label style="font-size: 0.8rem; color: var(--color-text-secondary); display: block; margin-bottom: 4px;">Received Quantity (Tons)</label>
+                  <input type="number" step="0.01" id="buyer-confirm-qty" value="${r.expectedYieldTons}" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--color-border); background: var(--color-surface); color: var(--color-text);">
+                </div>
+                <div>
+                  <label style="font-size: 0.8rem; color: var(--color-text-secondary); display: block; margin-bottom: 4px;">Quality Rating</label>
+                  <select id="buyer-confirm-quality" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--color-border); background: var(--color-surface); color: var(--color-text);">
+                    <option value="Grade A">Grade A (Premium)</option>
+                    <option value="Grade B">Grade B (Good)</option>
+                    <option value="Grade C">Grade C (Standard)</option>
+                    <option value="Rejected">Rejected</option>
+                  </select>
+                </div>
+              </div>
+              
+              <div style="margin-bottom: 16px;">
+                <label style="font-size: 0.8rem; color: var(--color-text-secondary); display: block; margin-bottom: 4px;">Inspector Remarks / Settlement Notes</label>
+                <textarea id="buyer-confirm-remarks" placeholder="Enter remarks about the delivery status" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--color-border); height: 60px; background: var(--color-surface); color: var(--color-text); font-family: inherit; resize: none;"></textarea>
+              </div>
+
+              <div style="display: flex; gap: 10px;">
+                <button class="btn btn-primary" id="buyer-action-confirm-btn" style="flex: 1; padding: 10px; background: #10b981; border-color: #10b981;">Confirm Receipt & Seal Blockchain Stamp</button>
+                <button class="btn btn-outline" id="buyer-action-dispute-btn" style="padding: 10px; border-color: #ef4444; color: #ef4444;">Raise Dispute</button>
+              </div>
+            </div>
+          `;
+          
+          // Add Action Event Listeners
+          document.getElementById('buyer-action-confirm-btn').onclick = () => this.handleBuyerAction(r.id, 'Confirmed');
+          document.getElementById('buyer-action-dispute-btn').onclick = () => this.handleBuyerAction(r.id, 'Dispute');
+          
+        } else {
+          resultDiv.innerHTML = `<p style="text-align: center; color: #ef4444;">${result.error || 'Failed to locate crop registration ID'}</p>`;
+        }
+      } catch (err) {
+        console.error('Lookup error:', err);
+        resultDiv.innerHTML = '<p style="text-align: center; color: #ef4444;">Error searching for registration ID</p>';
+      }
+    };
+  },
+
+  // Handle Buyer Match Confirmation Action
+  async handleBuyerAction(farmerId, status) {
+    const qtyInput = document.getElementById('buyer-confirm-qty');
+    const qualitySelect = document.getElementById('buyer-confirm-quality');
+    const remarksInput = document.getElementById('buyer-confirm-remarks');
+    
+    const receivedQtyTons = qtyInput ? parseFloat(qtyInput.value) : 0;
+    const qualityRating = qualitySelect ? qualitySelect.value : 'Grade A';
+    const remarks = remarksInput ? remarksInput.value.trim() : '';
+    
+    try {
+      // First, create the Match in the backend dynamically
+      const createMatchRes = await fetch('/api/matches/create', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.authToken}`
+        },
+        body: JSON.stringify({
+          farmerId: farmerId,
+          buyerId: this.currentUser.id || 'direct-buyer',
+          vegetableId: 'direct',
+          quantity: receivedQtyTons,
+          matchValue: receivedQtyTons * 15000
+        })
+      });
+      
+      const matchResult = await createMatchRes.json();
+      if (!matchResult.success) {
+        this.showNotification(matchResult.error || 'Direct matching registration failed', 'error');
+        return;
+      }
+      
+      const matchId = matchResult.match.id || 1;
+      
+      // Now, confirm the Match delivery!
+      const response = await fetch('/api/matches/buyer-confirm', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.authToken}`
+        },
+        body: JSON.stringify({
+          matchId: matchResult.match.id || matchId,
+          status,
+          receivedQtyTons,
+          qualityRating,
+          remarks
+        })
+      });
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        this.showNotification(`Harvest purchase successfully ${status === 'Confirmed' ? 'confirmed' : 'disputed'} and notarized on-chain!`, 'success');
+        document.getElementById('buyer-lookup-id').value = '';
+        document.getElementById('buyer-lookup-result').classList.add('hidden');
+        if (typeof this.loadLedgerData === 'function') {
+          this.loadLedgerData();
+        }
+      } else {
+        this.showNotification(result.error || 'Confirmation failed', 'error');
+      }
+    } catch (err) {
+      console.error('Buyer action request error:', err);
+      this.showNotification('Request failed. Check server connection.', 'error');
+    }
   },
 
   // Format time ago

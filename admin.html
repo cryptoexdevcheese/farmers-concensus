@@ -41,6 +41,9 @@
                                 <i data-lucide="eye" id="toggle-password-icon" style="width: 18px; height: 18px;"></i>
                             </button>
                         </div>
+                        <div style="display: flex; justify-content: flex-end; margin-top: 6px;">
+                            <button type="button" onclick="showAdminCredentialsHelp()" style="font-size: 0.8rem; background: none; border: none; color: #10b981; cursor: pointer; text-decoration: underline; padding: 0;">Forgot Credentials?</button>
+                        </div>
                     </div>
                     
                     <button type="submit" class="btn-primary btn-full">
@@ -215,6 +218,38 @@
                     </table>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <!-- Admin Recovery Help Modal -->
+    <div class="modal-overlay hidden" id="admin-recovery-modal" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(11, 17, 14, 0.95); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center; z-index: 10000; padding: 20px;">
+        <div class="modal-card card animate-scale-up" style="max-width: 460px; width: 100%; background: #121815; border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 24px; position: relative;">
+            <div style="display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 16px;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <i data-lucide="shield-alert" style="width: 24px; height: 24px; color: #f59e0b;"></i>
+                    <h3 style="font-size: 1.3rem; font-weight: 700; color: white; margin: 0; font-family: 'Outfit', sans-serif;">Admin Password Recovery</h3>
+                </div>
+                <button type="button" onclick="hideAdminCredentialsHelp()" style="background: none; border: none; color: #888; cursor: pointer; padding: 4px; display: flex; align-items: center; justify-content: center; border-radius: 4px; transition: background 0.2s;">
+                    <i data-lucide="x" style="width: 20px; height: 20px;"></i>
+                </button>
+            </div>
+            
+            <p style="color: #888; font-size: 0.95rem; line-height: 1.6; margin-bottom: 20px;">
+                To prevent remote takeover and preserve cryptographic integrity, administrative credentials cannot be retrieved or reset via email or SMS.
+            </p>
+            
+            <div style="background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.25); border-radius: 8px; padding: 16px; margin-bottom: 24px;">
+                <h4 style="color: #f59e0b; font-weight: 600; margin-top: 0; margin-bottom: 8px; font-size: 0.95rem;">Configuration Recovery Steps:</h4>
+                <ol style="margin: 0; padding-left: 20px; color: #888; font-size: 0.9rem; line-height: 1.5;">
+                    <li>Locate the <code>.env</code> file in the project directory.</li>
+                    <li>Open the file and update <code>ADMIN_USERNAME</code> and <code>ADMIN_PASSWORD</code> fields.</li>
+                    <li>Restart the Farmers Consensus server process to apply changes.</li>
+                </ol>
+            </div>
+
+            <button type="button" onclick="hideAdminCredentialsHelp()" style="width: 100%; background: #10b981; color: white; padding: 12px; border-radius: 8px; border: none; font-weight: 500; cursor: pointer; font-size: 1rem;">
+                Acknowledge & Close
+            </button>
         </div>
     </div>
 

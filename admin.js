@@ -338,6 +338,10 @@ function renderAdminLedgerTable() {
                         <i data-lucide="x-circle" style="width: 12px; height: 12px;"></i>
                         <span>Cancel</span>
                     </button>
+                    <button class="btn-danger btn-sm" onclick="deleteRegistration('${r.id}')" style="padding: 4px 8px; font-size: 0.8rem; border-radius: 6px; display: inline-flex; align-items: center; gap: 4px; background: rgba(239, 68, 68, 0.15); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3); cursor: pointer;">
+                        <i data-lucide="trash-2" style="width: 12px; height: 12px;"></i>
+                        <span>Delete</span>
+                    </button>
                 </div>
             `;
         } else if (status === 'Geo-Verified') {
@@ -351,10 +355,21 @@ function renderAdminLedgerTable() {
                         <i data-lucide="x-circle" style="width: 12px; height: 12px;"></i>
                         <span>Cancel</span>
                     </button>
+                    <button class="btn-danger btn-sm" onclick="deleteRegistration('${r.id}')" style="padding: 4px 8px; font-size: 0.8rem; border-radius: 6px; display: inline-flex; align-items: center; gap: 4px; background: rgba(239, 68, 68, 0.15); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3); cursor: pointer;">
+                        <i data-lucide="trash-2" style="width: 12px; height: 12px;"></i>
+                        <span>Delete</span>
+                    </button>
                 </div>
             `;
         } else {
-            actionButtons = `<span style="color: var(--color-text-muted); font-size: 0.85rem;">No actions</span>`;
+            actionButtons = `
+                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                    <button class="btn-danger btn-sm" onclick="deleteRegistration('${r.id}')" style="padding: 4px 8px; font-size: 0.8rem; border-radius: 6px; display: inline-flex; align-items: center; gap: 4px; background: rgba(239, 68, 68, 0.15); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3); cursor: pointer;">
+                        <i data-lucide="trash-2" style="width: 12px; height: 12px;"></i>
+                        <span>Delete</span>
+                    </button>
+                </div>
+            `;
         }
 
         const areaHa = parseFloat(r.areaHa) || 0;
@@ -456,6 +471,51 @@ async function cancelRegistration(id) {
     }
 }
 
+// Delete registration permanently
+async function deleteRegistration(id) {
+    if (!confirm(`⚠️ WARNING: Are you sure you want to PERMANENTLY DELETE registration ${id} from the database? This action is IRREVERSIBLE and will purge the record.`)) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/admin/farmers/delete/${id}`, {
+            method: 'DELETE',
+            credentials: 'same-origin'
+        });
+        
+        const result = await response.json();
+        if (result.success) {
+            alert(`Registration ${id} has been permanently deleted.`);
+            await fetchAdminRegistrations();
+        } else {
+            alert(`Failed to delete: ${result.error}`);
+        }
+    } catch (error) {
+        console.error('Error deleting registration:', error);
+        alert('An error occurred while deleting the registration.');
+    }
+}
+
+// Show admin credentials help modal
+function showAdminCredentialsHelp() {
+    const modal = document.getElementById('admin-recovery-modal');
+    if (modal) {
+        modal.classList.remove('hidden');
+        lucide.createIcons(); // Ensure Lucide icons render in modal
+    }
+}
+
+// Hide admin credentials help modal
+function hideAdminCredentialsHelp() {
+    const modal = document.getElementById('admin-recovery-modal');
+    if (modal) {
+        modal.classList.add('hidden');
+    }
+}
+
 // Bind to window for inline onclick handlers
 window.verifyRegistration = verifyRegistration;
 window.cancelRegistration = cancelRegistration;
+window.deleteRegistration = deleteRegistration;
+window.showAdminCredentialsHelp = showAdminCredentialsHelp;
+window.hideAdminCredentialsHelp = hideAdminCredentialsHelp;
