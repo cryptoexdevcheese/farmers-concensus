@@ -17,46 +17,53 @@ const app = {
 
   // Initialize Application
   init() {
-    this.loadState();
-    this.initLucide();
-    this.initTheme();
-    this.initTabs();
-    this.initGeographicDropdowns();
-    this.renderVegetableChips();
-    this.initCalculatorListeners();
-    this.initFormValidation();
-    this.initTableFilters();
-    this.initExportCSV();
+    try { this.loadState(); } catch (e) { console.error('Error loadState:', e); }
+    try { this.initLucide(); } catch (e) { console.error('Error initLucide:', e); }
+    try { this.initTheme(); } catch (e) { console.error('Error initTheme:', e); }
+    try { this.initTabs(); } catch (e) { console.error('Error initTabs:', e); }
+    try { this.initGeographicDropdowns(); } catch (e) { console.error('Error initGeographicDropdowns:', e); }
+    try { this.renderVegetableChips(); } catch (e) { console.error('Error renderVegetableChips:', e); }
+    try { this.initCalculatorListeners(); } catch (e) { console.error('Error initCalculatorListeners:', e); }
+    try { this.initFormValidation(); } catch (e) { console.error('Error initFormValidation:', e); }
+    try { this.initTableFilters(); } catch (e) { console.error('Error initTableFilters:', e); }
+    try { this.initExportCSV(); } catch (e) { console.error('Error initExportCSV:', e); }
     
     // User Authentication
-    this.initAuth();
+    try { this.initAuth(); } catch (e) { console.error('Error initAuth:', e); }
     
     // Blockchain Integration
-    this.checkBlockchainStatus();
-    this.initBuyerRegistration();
+    try { this.checkBlockchainStatus(); } catch (e) { console.error('Error checkBlockchainStatus:', e); }
+    try { this.initBuyerRegistration(); } catch (e) { console.error('Error initBuyerRegistration:', e); }
 
     // NCH Live Price Ticker
-    this.initNCHPriceTicker();
+    try { this.initNCHPriceTicker(); } catch (e) { console.error('Error initNCHPriceTicker:', e); }
 
     // Hydrate from database (overrides/merges with localStorage)
-    this.hydrateFromDatabase();
+    try { this.hydrateFromDatabase(); } catch (e) { console.error('Error hydrateFromDatabase:', e); }
     
     // Mobile Enhancements
-    this.initMobileEnhancements();
-    this.initPWAFeatures();
-    this.optimizeMobilePerformance();
-    this.initMobileErrorHandling();
+    try { this.initMobileEnhancements(); } catch (e) { console.error('Error initMobileEnhancements:', e); }
+    try { this.initPWAFeatures(); } catch (e) { console.error('Error initPWAFeatures:', e); }
+    try { this.optimizeMobilePerformance(); } catch (e) { console.error('Error optimizeMobilePerformance:', e); }
+    try { this.initMobileErrorHandling(); } catch (e) { console.error('Error initMobileErrorHandling:', e); }
     
     // Draw Stats and Charts
-    this.updateDashboardMetrics();
-    this.initCharts();
-    this.renderLedgerTable();
-    this.populateFilterDropdowns();
+    try { this.updateDashboardMetrics(); } catch (e) { console.error('Error updateDashboardMetrics:', e); }
+    try { this.initCharts(); } catch (e) { console.error('Error initCharts:', e); }
+    try { this.renderLedgerTable(); } catch (e) { console.error('Error renderLedgerTable:', e); }
+    try { this.populateFilterDropdowns(); } catch (e) { console.error('Error populateFilterDropdowns:', e); }
 
     // Set Default Planting Date (Today + 1 week)
-    const today = new Date();
-    today.setDate(today.getDate() + 7);
-    document.getElementById("planting-date").value = today.toISOString().split("T")[0];
+    try {
+      const today = new Date();
+      today.setDate(today.getDate() + 7);
+      const plantingDateInput = document.getElementById("planting-date");
+      if (plantingDateInput) {
+        plantingDateInput.value = today.toISOString().split("T")[0];
+      }
+    } catch (e) {
+      console.error('Error setting default planting date:', e);
+    }
   },
 
   // ─── NCH Live Price Ticker ───────────────────────────────────────────────
@@ -3756,6 +3763,9 @@ const app = {
     return Math.floor(seconds) + ' seconds ago';
   }
 };
+
+// Expose app object globally
+window.app = app;
 
 // Document DOM Loaded Trigger
 document.addEventListener("DOMContentLoaded", () => {
