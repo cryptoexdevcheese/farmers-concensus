@@ -1693,9 +1693,6 @@ const app = {
         
         // Reset form
         form.reset();
-        
-        // Refresh revenue analytics
-        this.fetchRevenueAnalytics();
       } else {
         alert("❌ Buyer registration failed: " + result.error);
       }
