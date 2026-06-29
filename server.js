@@ -1155,15 +1155,16 @@ app.post('/api/matches/create', requireAuth, async (req, res) => {
 // Get blockchain status
 app.get('/api/blockchain/status', async (req, res) => {
     try {
-        const response = await axios.get(`${CHEESE_API_URL}/api/health`);
+        const response = await axios.get(`${CHEESE_API_URL}/api/health`, { timeout: 3000 });
         res.json({
             success: true,
             blockchain: response.data
         });
     } catch (error) {
-        res.status(500).json({
+        res.json({
             success: false,
-            error: 'Unable to connect to Cheese Blockchain'
+            error: 'Unable to connect to Cheese Blockchain',
+            connected: false
         });
     }
 });
