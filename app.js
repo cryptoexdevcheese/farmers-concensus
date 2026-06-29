@@ -1438,7 +1438,8 @@ const app = {
       const response = await fetch('/api/farmers/register', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.authToken}`
         },
         body: JSON.stringify(registrationData)
       });
@@ -1666,7 +1667,10 @@ const app = {
     try {
       const response = await fetch("/api/buyers/register", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${this.authToken}`
+        },
         body: JSON.stringify(buyerData)
       });
 
