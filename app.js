@@ -924,16 +924,45 @@ const app = {
     this.initProvinceFilters();
   },
 
-  // Initialize Province & Municipality Filter Dropdowns for charts
+  // Initialize Province & Municipality & Vegetable Filter Dropdowns for charts
   async initProvinceFilters() {
     const cropShareProv = document.getElementById("crop-share-province-filter");
     const cropShareMun = document.getElementById("crop-share-municipality-filter");
     
     const intensityProv = document.getElementById("intensity-province-filter");
     const intensityMun = document.getElementById("intensity-municipality-filter");
+    const intensityVeg = document.getElementById("intensity-vegetable-filter");
     
     const timelineProv = document.getElementById("timeline-province-filter");
     const timelineMun = document.getElementById("timeline-municipality-filter");
+    const timelineVeg = document.getElementById("timeline-vegetable-filter");
+
+    // Populate vegetable filter dropdowns
+    if (intensityVeg) {
+      intensityVeg.innerHTML = '<option value="all">All Vegetables</option>';
+      window.VEGETABLES.forEach(v => {
+        const option = document.createElement("option");
+        option.value = v.id;
+        option.textContent = `${v.emoji} ${v.name}`;
+        intensityVeg.appendChild(option);
+      });
+      intensityVeg.addEventListener("change", () => {
+        this.updateCharts();
+      });
+    }
+
+    if (timelineVeg) {
+      timelineVeg.innerHTML = '<option value="all">All Vegetables</option>';
+      window.VEGETABLES.forEach(v => {
+        const option = document.createElement("option");
+        option.value = v.id;
+        option.textContent = `${v.emoji} ${v.name}`;
+        timelineVeg.appendChild(option);
+      });
+      timelineVeg.addEventListener("change", () => {
+        this.updateCharts();
+      });
+    }
 
     // Load all provinces dynamically from PSGC
     try {
@@ -1022,9 +1051,11 @@ const app = {
 
     const intensityProvince = document.getElementById("intensity-province-filter") ? document.getElementById("intensity-province-filter").value : "";
     const intensityMunicipality = document.getElementById("intensity-municipality-filter") ? document.getElementById("intensity-municipality-filter").value : "";
+    const intensityVegetable = document.getElementById("intensity-vegetable-filter") ? document.getElementById("intensity-vegetable-filter").value : "";
 
     const timelineProvince = document.getElementById("timeline-province-filter").value;
     const timelineMunicipality = document.getElementById("timeline-municipality-filter").value;
+    const timelineVegetable = document.getElementById("timeline-vegetable-filter") ? document.getElementById("timeline-vegetable-filter").value : "";
 
     // Redraw Crop Share Doughnut
     this.charts.cropShare.data = this.getCropShareData(cropShareProvince, cropShareMunicipality);
@@ -1032,7 +1063,7 @@ const app = {
     this.charts.cropShare.update();
 
     // Redraw Province Bar Chart
-    this.charts.provinceIntensity.data = this.getProvinceIntensityData(intensityProvince, intensityMunicipality);
+    this.charts.provinceIntensity.data = this.getProvinceIntensityData(intensityProvince, intensityMunicipality, intensityVegetable);
     this.charts.provinceIntensity.options.scales.x.grid.color = this.theme === "dark" ? "rgba(52, 211, 153, 0.08)" : "rgba(16, 185, 129, 0.08)";
     this.charts.provinceIntensity.options.scales.x.ticks.color = this.theme === "dark" ? "#a7f3d0" : "#3b5245";
     this.charts.provinceIntensity.options.scales.y.ticks.color = this.theme === "dark" ? "#a7f3d0" : "#3b5245";
@@ -1040,7 +1071,7 @@ const app = {
     this.charts.provinceIntensity.update();
 
     // Redraw Supply Timeline
-    this.charts.timeline.data = this.getTimelineData(timelineProvince, timelineMunicipality);
+    this.charts.timeline.data = this.getTimelineData(timelineProvince, timelineMunicipality, timelineVegetable);
     this.charts.timeline.options.scales.x.ticks.color = this.theme === "dark" ? "#a7f3d0" : "#3b5245";
     this.charts.timeline.options.scales.y.ticks.color = this.theme === "dark" ? "#a7f3d0" : "#3b5245";
     this.charts.timeline.options.scales.y.grid.color = this.theme === "dark" ? "rgba(52, 211, 153, 0.08)" : "rgba(16, 185, 129, 0.08)";
@@ -1096,13 +1127,14 @@ const app = {
   },
 
   // Dynamic calculations for Province Horizontal Bar
-  getProvinceIntensityData(provinceFilter = "", municipalityFilter = "") {
+  getProvinceIntensityData(provinceFilter = "", municipalityFilter = "", vegetableFilter = "") {
     const locationAreas = {};
 
     const filteredRegistrations = this.registrations.filter(r => {
       const matchesProvince = !provinceFilter || provinceFilter === "all" || r.province === provinceFilter;
       const matchesMunicipality = !municipalityFilter || municipalityFilter === "all" || r.municipality === municipalityFilter;
-      return matchesProvince && matchesMunicipality;
+      const matchesVegetable = !vegetableFilter || vegetableFilter === "all" || r.vegetableId === vegetableFilter;
+      return matchesProvince && matchesMunicipality && matchesVegetable;
     });
 
     filteredRegistrations.forEach(r => {
@@ -1132,7 +1164,7 @@ const app = {
   },
 
   // Dynamic calculations for Timeline Line chart (Expected Harvest Months)
-  getTimelineData(provinceFilter = "", municipalityFilter = "") {
+  getTimelineData(provinceFilter = "", municipalityFilter = "", vegetableFilter = "") {
     const monthlyYields = {};
     const monthsKeys = [];
 
@@ -1153,7 +1185,8 @@ const app = {
     const filteredRegistrations = this.registrations.filter(r => {
       const matchesProvince = !provinceFilter || provinceFilter === "all" || r.province === provinceFilter;
       const matchesMunicipality = !municipalityFilter || municipalityFilter === "all" || r.municipality === municipalityFilter;
-      return matchesProvince && matchesMunicipality;
+      const matchesVegetable = !vegetableFilter || vegetableFilter === "all" || r.vegetableId === vegetableFilter;
+      return matchesProvince && matchesMunicipality && matchesVegetable;
     });
 
     filteredRegistrations.forEach(r => {
