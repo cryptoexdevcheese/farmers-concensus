@@ -6,14 +6,15 @@ CREATE TABLE IF NOT EXISTS users (
     email VARCHAR(255) UNIQUE NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
     full_name VARCHAR(255) NOT NULL,
-    user_type VARCHAR(20) NOT NULL, -- 'farmer' or 'buyer'
+    user_type VARCHAR(20) NOT NULL, -- 'farmer', 'buyer', 'barangay', 'admin'
     wallet_address VARCHAR(255),
     registration_id VARCHAR(50), -- Links to farmer_id or buyer_id
     phone VARCHAR(20),
     is_active BOOLEAN DEFAULT TRUE,
     email_verified BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT chk_users_user_type CHECK (user_type IN ('farmer', 'buyer', 'barangay', 'admin'))
 );
 
 -- NCH Token Balances Table
@@ -76,7 +77,7 @@ CREATE TABLE IF NOT EXISTS farmers_registrations (
     barangay VARCHAR(100) NOT NULL,
     vegetable_id VARCHAR(50) NOT NULL,
     area_sqm DECIMAL(10, 2) NOT NULL,
-    area_ha DECIMAL(10, 2) NOT NULL,
+    area_ha DECIMAL(10, 4) NOT NULL, -- DECIMAL(10,4) prevents rounding under 0.01 ha
     expected_yield_tons DECIMAL(10, 2) NOT NULL,
     planting_date DATE NOT NULL,
     harvest_date DATE NOT NULL,
@@ -118,8 +119,8 @@ CREATE TABLE IF NOT EXISTS buyers_registrations (
 -- Farmer-Buyer Matches Table
 CREATE TABLE IF NOT EXISTS farmer_buyer_matches (
     id SERIAL PRIMARY KEY,
-    farmer_id VARCHAR(50) NOT NULL,
-    buyer_id VARCHAR(50) NOT NULL,
+    farmer_id VARCHAR(50) NOT NULL REFERENCES farmers_registrations(farmer_id) ON DELETE CASCADE,
+    buyer_id VARCHAR(50) NOT NULL REFERENCES buyers_registrations(buyer_id) ON DELETE CASCADE,
     vegetable_id VARCHAR(50) NOT NULL,
     quantity DECIMAL(10, 2) NOT NULL,
     match_value DECIMAL(12, 2) NOT NULL,
@@ -165,6 +166,26 @@ CREATE TABLE IF NOT EXISTS daily_revenue (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Email Verification Tokens Table
+CREATE TABLE IF NOT EXISTS email_verification_tokens (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token VARCHAR(255) UNIQUE NOT NULL,
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    used_at TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Password Reset Tokens Table
+CREATE TABLE IF NOT EXISTS password_reset_tokens (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token VARCHAR(255) UNIQUE NOT NULL,
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    used_at TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Indexes for better performance
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 CREATE INDEX IF NOT EXISTS idx_users_type ON users(user_type);
@@ -189,6 +210,7 @@ CREATE INDEX IF NOT EXISTS idx_farmers_registrations_id ON farmers_registrations
 CREATE INDEX IF NOT EXISTS idx_farmers_registrations_province ON farmers_registrations(province);
 CREATE INDEX IF NOT EXISTS idx_farmers_registrations_vegetable ON farmers_registrations(vegetable_id);
 CREATE INDEX IF NOT EXISTS idx_farmers_registrations_date ON farmers_registrations(registration_timestamp);
+CREATE INDEX IF NOT EXISTS idx_farmers_registrations_user_created ON farmers_registrations(user_id, created_at);
 
 CREATE INDEX IF NOT EXISTS idx_buyers_registrations_id ON buyers_registrations(buyer_id);
 CREATE INDEX IF NOT EXISTS idx_buyers_registrations_province ON buyers_registrations(province);
@@ -202,6 +224,12 @@ CREATE INDEX IF NOT EXISTS idx_revenue_type ON revenue_transactions(transaction_
 CREATE INDEX IF NOT EXISTS idx_revenue_timestamp ON revenue_transactions(transaction_timestamp);
 
 CREATE INDEX IF NOT EXISTS idx_daily_revenue_date ON daily_revenue(date);
+
+-- Unique index to prevent duplicate submissions by the same user for the same farmer_id
+CREATE UNIQUE INDEX IF NOT EXISTS uq_one_registration_per_user_per_id
+    ON farmers_registrations (user_id, farmer_id)
+    WHERE user_id IS NOT NULL;
+
 
 -- Trigger to update updated_at timestamp
 CREATE OR REPLACE FUNCTION update_updated_at_column()
