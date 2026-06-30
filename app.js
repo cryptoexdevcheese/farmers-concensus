@@ -1964,6 +1964,9 @@ const app = {
     
     // Initialize user dashboard
     this.initUserDashboard();
+    
+    // Initialize Barangay Admin Panel widget (sidebar)
+    this.updateBarangayWidget();
   },
 
   // Initialize authentication form handlers
@@ -2835,6 +2838,9 @@ const app = {
       
       // Load role specific verification consoles
       this.updateRoleConsoles();
+      
+      // Update Barangay Admin Panel widget in sidebar
+      this.updateBarangayWidget();
     } else {
       // Show auth buttons, hide user menu
       authButtons.forEach(btn => btn.style.display = 'flex');
@@ -2869,6 +2875,9 @@ const app = {
       const buyerConsole = document.getElementById('buyer-console-card');
       if (barangayConsole) barangayConsole.classList.add('hidden');
       if (buyerConsole) buyerConsole.classList.add('hidden');
+      
+      // Reset Barangay Admin Panel widget to locked state
+      this.updateBarangayWidget();
     }
   },
 
@@ -3597,6 +3606,209 @@ const app = {
     } catch (err) {
       console.error('Barangay verify request error:', err);
       this.showNotification('Request failed. Check server connection.', 'error');
+    }
+  },
+
+  // ===== BARANGAY ADMIN PANEL WIDGET (Sidebar) =====
+
+  // Update the Barangay Admin Panel widget visibility based on auth state
+  updateBarangayWidget() {
+    const widgetLocked = document.getElementById('barangay-widget-locked');
+    const widgetWrongRole = document.getElementById('barangay-widget-wrong-role');
+    const widgetActive = document.getElementById('barangay-widget-active');
+    const roleSpan = document.getElementById('barangay-widget-user-role');
+
+    if (!widgetLocked || !widgetWrongRole || !widgetActive) return;
+
+    // Hide all states first
+    widgetLocked.style.display = 'none';
+    widgetWrongRole.style.display = 'none';
+    widgetActive.style.display = 'none';
+
+    if (!this.currentUser) {
+      // Not logged in — show lock prompt
+      widgetLocked.style.display = 'block';
+    } else if (this.currentUser.userType !== 'barangay' && this.currentUser.userType !== 'admin') {
+      // Logged in but wrong role
+      widgetWrongRole.style.display = 'block';
+      if (roleSpan) roleSpan.textContent = this.currentUser.userType || 'unknown';
+    } else {
+      // Logged in as barangay or admin — show active console
+      widgetActive.style.display = 'block';
+      this.loadBarangayWidgetData();
+    }
+
+    // Re-initialize Lucide icons for the widget
+    this.initLucide();
+  },
+
+  // Fetch and render barangay widget pending items
+  async loadBarangayWidgetData() {
+    const pendingList = document.getElementById('brgy-widget-pending-list');
+    const pendingCountEl = document.getElementById('brgy-pending-count');
+    const verifiedCountEl = document.getElementById('brgy-verified-count');
+    const rejectedCountEl = document.getElementById('brgy-rejected-count');
+    const badge = document.getElementById('barangay-pending-badge');
+
+    if (!pendingList) return;
+
+    pendingList.innerHTML = '<p style="text-align: center; color: var(--color-text-secondary); font-size: 0.85rem; padding: 12px 0;">Loading...</p>';
+
+    try {
+      const response = await fetch('/api/farmers/registrations');
+      const result = await response.json();
+
+      if (!result.success) {
+        pendingList.innerHTML = '<p style="text-align: center; color: #ef4444; font-size: 0.85rem;">Failed to load data.</p>';
+        return;
+      }
+
+      const all = result.registrations || [];
+      const pending = all.filter(r => r.verificationStatus === 'Pending');
+      const verified = all.filter(r => r.verificationStatus === 'Geo-Verified' || r.verificationStatus === 'Verified');
+      const rejected = all.filter(r => r.verificationStatus === 'Cancelled' || r.verificationStatus === 'Rejected');
+
+      // Update stat counters
+      if (pendingCountEl) pendingCountEl.textContent = pending.length;
+      if (verifiedCountEl) verifiedCountEl.textContent = verified.length;
+      if (rejectedCountEl) rejectedCountEl.textContent = rejected.length;
+
+      // Update badge
+      if (badge) {
+        if (pending.length > 0) {
+          badge.textContent = pending.length;
+          badge.style.display = 'inline-block';
+        } else {
+          badge.style.display = 'none';
+        }
+      }
+
+      // Render pending items (show up to 5 in widget)
+      if (pending.length === 0) {
+        pendingList.innerHTML = `
+          <div class="brgy-empty-state">
+            <div class="empty-icon">✅</div>
+            <p>All crop registrations are verified. No pending items.</p>
+          </div>
+        `;
+        return;
+      }
+
+      const displayItems = pending.slice(0, 5);
+      pendingList.innerHTML = '';
+
+      displayItems.forEach(r => {
+        const item = document.createElement('div');
+        item.className = 'brgy-pending-item';
+        item.id = `brgy-widget-item-${r.id}`;
+        item.innerHTML = `
+          <div class="brgy-item-header">
+            <span class="brgy-item-id">${r.id}</span>
+            <span class="brgy-item-crop">${this.getVegetableName(r.vegetableId)}</span>
+          </div>
+          <div class="brgy-item-details">
+            📍 ${r.barangay}, ${r.municipality}<br>
+            📐 ${r.areaHa} ha · 📦 ${r.expectedYieldTons} T expected
+          </div>
+          <div class="brgy-item-inputs">
+            <input type="text" id="brgy-w-inspector-${r.id}" placeholder="Inspector name">
+            <input type="text" id="brgy-w-remarks-${r.id}" placeholder="Remarks">
+          </div>
+          <div class="brgy-item-actions">
+            <button class="brgy-approve-btn" data-id="${r.id}">✓ Approve</button>
+            <button class="brgy-reject-btn" data-id="${r.id}">✗ Reject</button>
+          </div>
+        `;
+        pendingList.appendChild(item);
+      });
+
+      // Show overflow indicator
+      if (pending.length > 5) {
+        const overflow = document.createElement('p');
+        overflow.style.cssText = 'text-align: center; font-size: 0.8rem; color: var(--color-text-secondary); margin-top: 4px;';
+        overflow.textContent = `+${pending.length - 5} more — open full console to view all`;
+        pendingList.appendChild(overflow);
+      }
+
+      // Attach event listeners
+      pendingList.querySelectorAll('.brgy-approve-btn').forEach(btn => {
+        btn.addEventListener('click', () => this.handleBarangayWidgetAction(btn.dataset.id, 'Approved'));
+      });
+      pendingList.querySelectorAll('.brgy-reject-btn').forEach(btn => {
+        btn.addEventListener('click', () => this.handleBarangayWidgetAction(btn.dataset.id, 'Rejected'));
+      });
+
+    } catch (err) {
+      console.error('Barangay widget data error:', err);
+      pendingList.innerHTML = '<p style="text-align: center; color: #ef4444; font-size: 0.85rem;">Connection error.</p>';
+    }
+  },
+
+  // Handle approve/reject from the sidebar widget
+  async handleBarangayWidgetAction(id, status) {
+    const inspectorInput = document.getElementById(`brgy-w-inspector-${id}`);
+    const remarksInput = document.getElementById(`brgy-w-remarks-${id}`);
+    const itemEl = document.getElementById(`brgy-widget-item-${id}`);
+
+    const inspectorName = inspectorInput ? inspectorInput.value.trim() : '';
+    const remarks = remarksInput ? remarksInput.value.trim() : '';
+
+    // Disable buttons during request
+    if (itemEl) {
+      itemEl.querySelectorAll('button').forEach(btn => { btn.disabled = true; btn.style.opacity = '0.5'; });
+    }
+
+    try {
+      const response = await fetch('/api/farmers/barangay-verify', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.authToken}`
+        },
+        body: JSON.stringify({ id, status, inspectorName, remarks })
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        this.showNotification(`${id} ${status === 'Approved' ? 'approved ✅' : 'rejected ❌'} successfully!`, 'success');
+
+        // Animate removal
+        if (itemEl) {
+          itemEl.style.transition = 'all 0.3s ease';
+          itemEl.style.opacity = '0';
+          itemEl.style.transform = 'translateX(20px)';
+          setTimeout(() => {
+            // Reload both the widget and the full console table
+            this.loadBarangayWidgetData();
+            this.loadBarangayPendingCrops();
+            if (typeof this.loadLedgerData === 'function') this.loadLedgerData();
+          }, 300);
+        }
+      } else {
+        this.showNotification(result.error || 'Verification failed', 'error');
+        if (itemEl) {
+          itemEl.querySelectorAll('button').forEach(btn => { btn.disabled = false; btn.style.opacity = '1'; });
+        }
+      }
+    } catch (err) {
+      console.error('Barangay widget verify error:', err);
+      this.showNotification('Request failed. Check server connection.', 'error');
+      if (itemEl) {
+        itemEl.querySelectorAll('button').forEach(btn => { btn.disabled = false; btn.style.opacity = '1'; });
+      }
+    }
+  },
+
+  // Navigate to the full Barangay Console (analytics tab + scroll)
+  navigateToBarangayConsole() {
+    const analyticsTabBtn = document.querySelector('[data-tab="analytics-tab"]');
+    if (analyticsTabBtn) {
+      analyticsTabBtn.click();
+      setTimeout(() => {
+        const consoleCard = document.getElementById('barangay-console-card');
+        if (consoleCard) consoleCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 150);
     }
   },
 
