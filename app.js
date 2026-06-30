@@ -27,6 +27,7 @@ const app = {
     try { this.initFormValidation(); } catch (e) { console.error('Error initFormValidation:', e); }
     try { this.initTableFilters(); } catch (e) { console.error('Error initTableFilters:', e); }
     try { this.initExportCSV(); } catch (e) { console.error('Error initExportCSV:', e); }
+    try { this.initDARegionFilter(); } catch (e) { console.error('Error initDARegionFilter:', e); }
     
     // User Authentication
     try { this.initAuth(); } catch (e) { console.error('Error initAuth:', e); }
@@ -3810,6 +3811,76 @@ const app = {
         if (consoleCard) consoleCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }, 150);
     }
+  },
+
+  // ===== DA ADMIN BENCHMARKS FILTER =====
+
+  // Initialize the DA Admin Region filter dropdown handler
+  initDARegionFilter() {
+    const filter = document.getElementById('da-region-filter');
+    if (!filter) return;
+    
+    filter.addEventListener('change', (e) => {
+      this.updateDABenchmarks(e.target.value);
+    });
+  },
+
+  // Update the DA Admin panel yield benchmarks based on selected region
+  updateDABenchmarks(region) {
+    let multiplier = 1.0;
+    let labelSuffix = '';
+    
+    switch(region) {
+      case 'ncr':
+        multiplier = 0.12; // Urban farming has low yield per unit area
+        labelSuffix = ' (Urban)';
+        break;
+      case 'car':
+        multiplier = 1.22; // Highland conditions boost brassica yields
+        labelSuffix = ' (Highland)';
+        break;
+      case 'region3':
+        multiplier = 1.15; // Lowland plain granary
+        labelSuffix = ' (Plain)';
+        break;
+      case 'region1':
+        multiplier = 1.10; // Rich soils, especially for alliums
+        labelSuffix = ' (Allium H.)';
+        break;
+      case 'barmm':
+        multiplier = 0.88; // Lower infrastructure and yield benchmarks
+        labelSuffix = ' (Standard)';
+        break;
+      case 'all':
+      default:
+        multiplier = 1.0;
+        break;
+    }
+    
+    const benchmarks = [
+      { id: 'cabbage', elementId: 'da-yield-cabbage', base: 20.5 },
+      { id: 'onion', elementId: 'da-yield-onion', base: 16.5 },
+      { id: 'tomato', elementId: 'da-yield-tomato', base: 25.0 },
+      { id: 'eggplant', elementId: 'da-yield-eggplant', base: 15.0 }
+    ];
+    
+    benchmarks.forEach(item => {
+      const el = document.getElementById(item.elementId);
+      if (el) {
+        let adjusted = item.base * multiplier;
+        // Cold highlands CAR: Cabbage is much higher, but hot-weather eggplant is lower
+        if (region === 'car') {
+          if (item.id === 'cabbage') adjusted = 24.5;
+          if (item.id === 'eggplant') adjusted = 11.2;
+        }
+        
+        el.style.opacity = '0';
+        setTimeout(() => {
+          el.textContent = `${adjusted.toFixed(1)} Tons / Ha${labelSuffix}`;
+          el.style.opacity = '1';
+        }, 150);
+      }
+    });
   },
 
   // Vegetable ID helper mapping
