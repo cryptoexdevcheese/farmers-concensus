@@ -2783,6 +2783,7 @@ const app = {
       userMenu.forEach(menu => {
         menu.style.display = 'flex';
         menu.classList.add('visible');
+        menu.classList.remove('hidden'); // Remove hidden class to override !important styles in CSS
       });
       loginRequiredElements.forEach(el => el.classList.remove('hidden'));
       
@@ -2815,6 +2816,21 @@ const app = {
           if (lockOverlay) lockOverlay.classList.remove('hidden');
           if (buyerLockOverlay) buyerLockOverlay.classList.remove('hidden');
         }
+        
+        // Auto-navigate to relevant consoles on login
+        setTimeout(() => {
+          if (this.currentUser.userType === 'barangay') {
+            const analyticsTabBtn = document.querySelector('[data-tab="analytics-tab"]');
+            if (analyticsTabBtn) {
+              analyticsTabBtn.click();
+              const consoleCard = document.getElementById('barangay-console-card');
+              if (consoleCard) consoleCard.scrollIntoView({ behavior: 'smooth' });
+            }
+          } else if (this.currentUser.userType === 'buyer') {
+            const buyerTabBtn = document.querySelector('[data-tab="buyer-tab"]');
+            if (buyerTabBtn) buyerTabBtn.click();
+          }
+        }, 100);
       }
       
       // Load role specific verification consoles
@@ -2825,8 +2841,16 @@ const app = {
       userMenu.forEach(menu => {
         menu.style.display = 'none';
         menu.classList.remove('visible');
+        menu.classList.add('hidden'); // Add hidden class back to block user menu
       });
       loginRequiredElements.forEach(el => el.classList.add('hidden'));
+      
+      // Switch back to register-tab if on user-dashboard-tab on logout
+      const activeTab = document.querySelector('.tab-btn.active');
+      if (activeTab && activeTab.getAttribute('data-tab') === 'user-dashboard-tab') {
+        const registerTabBtn = document.querySelector('[data-tab="register-tab"]');
+        if (registerTabBtn) registerTabBtn.click();
+      }
       
       // Show overlays to block anonymous actions
       if (lockOverlay) lockOverlay.classList.remove('hidden');
