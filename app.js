@@ -28,6 +28,7 @@ const app = {
     try { this.initTableFilters(); } catch (e) { console.error('Error initTableFilters:', e); }
     try { this.initExportCSV(); } catch (e) { console.error('Error initExportCSV:', e); }
     try { this.initDARegionFilter(); } catch (e) { console.error('Error initDARegionFilter:', e); }
+    try { this.initDASubtabs(); } catch (e) { console.error('Error initDASubtabs:', e); }
     
     // User Authentication
     try { this.initAuth(); } catch (e) { console.error('Error initAuth:', e); }
@@ -2833,6 +2834,8 @@ const app = {
           } else if (this.currentUser.userType === 'buyer') {
             const buyerTabBtn = document.querySelector('[data-tab="buyer-tab"]');
             if (buyerTabBtn) buyerTabBtn.click();
+          } else if (this.currentUser.userType === 'admin') {
+            this.navigateToDAConsole();
           }
         }, 100);
       }
@@ -2842,6 +2845,9 @@ const app = {
       
       // Update Barangay Admin Panel widget in sidebar
       this.updateBarangayWidget();
+      
+      // Update DA Admin Portal widget in sidebar
+      this.updateDAWidget();
     } else {
       // Show auth buttons, hide user menu
       authButtons.forEach(btn => btn.style.display = 'flex');
@@ -2879,6 +2885,9 @@ const app = {
       
       // Reset Barangay Admin Panel widget to locked state
       this.updateBarangayWidget();
+      
+      // Reset DA Admin widget to locked state
+      this.updateDAWidget();
     }
   },
 
@@ -3881,6 +3890,257 @@ const app = {
         }, 150);
       }
     });
+  },
+
+  // ===== DA ADMIN CONSOLE =====
+
+  // Cache for DA data (for client-side filtering)
+  _daFarmersCache: [],
+  _daBuyersCache: [],
+  _daCropsCache: [],
+
+  // Update DA Admin sidebar widget and tab button visibility
+  updateDAWidget() {
+    const publicBenchmarks = document.getElementById('da-widget-public-benchmarks');
+    const authorizedConsole = document.getElementById('da-widget-authorized-console');
+    const lockPrompt = document.getElementById('da-widget-lock-prompt');
+    const daTabBtn = document.getElementById('da-admin-tab-btn');
+
+    if (!publicBenchmarks || !authorizedConsole) return;
+
+    const isDAAdmin = this.currentUser && this.currentUser.userType === 'admin';
+
+    if (isDAAdmin) {
+      // Show authorized console, hide lock prompt
+      authorizedConsole.style.display = 'block';
+      if (lockPrompt) lockPrompt.style.display = 'none';
+      if (daTabBtn) { daTabBtn.classList.remove('hidden'); daTabBtn.style.display = ''; }
+
+      // Load sidebar stats
+      this.loadDAWidgetStats();
+    } else {
+      // Show public benchmarks + lock prompt, hide authorized console
+      authorizedConsole.style.display = 'none';
+      if (lockPrompt) lockPrompt.style.display = 'block';
+      if (daTabBtn) { daTabBtn.classList.add('hidden'); daTabBtn.style.display = 'none'; }
+    }
+
+    this.initLucide();
+  },
+
+  // Load quick stats for the DA sidebar widget
+  async loadDAWidgetStats() {
+    try {
+      const response = await fetch('/api/da/stats', {
+        headers: { 'Authorization': `Bearer ${this.authToken}` }
+      });
+      const result = await response.json();
+
+      if (result.success) {
+        const s = result.stats;
+        const el = (id) => document.getElementById(id);
+        if (el('da-widget-farmers-count')) el('da-widget-farmers-count').textContent = s.farmers;
+        if (el('da-widget-buyers-count')) el('da-widget-buyers-count').textContent = s.buyers;
+        if (el('da-widget-crops-count')) el('da-widget-crops-count').textContent = s.crops;
+      }
+    } catch (err) {
+      console.error('DA widget stats error:', err);
+    }
+  },
+
+  // Navigate to the DA Admin Console tab
+  navigateToDAConsole() {
+    const daTabBtn = document.querySelector('[data-tab="da-admin-tab"]');
+    if (daTabBtn) {
+      daTabBtn.click();
+      this.loadDAConsoleData();
+    }
+  },
+
+  // Load all DA Console data (stats + farmers + buyers + crops)
+  async loadDAConsoleData() {
+    if (!this.authToken) return;
+
+    try {
+      // Fetch stats
+      const statsRes = await fetch('/api/da/stats', {
+        headers: { 'Authorization': `Bearer ${this.authToken}` }
+      });
+      const statsData = await statsRes.json();
+
+      if (statsData.success) {
+        const s = statsData.stats;
+        const el = (id) => document.getElementById(id);
+        if (el('da-stat-farmers')) el('da-stat-farmers').textContent = s.farmers;
+        if (el('da-stat-buyers')) el('da-stat-buyers').textContent = s.buyers;
+        if (el('da-stat-area')) el('da-stat-area').textContent = `${s.totalAreaHa.toFixed(2)} ha`;
+        if (el('da-stat-yield')) el('da-stat-yield').textContent = `${s.totalYieldTons.toFixed(1)} T`;
+      }
+
+      // Fetch farmers
+      const farmersRes = await fetch('/api/da/farmers', {
+        headers: { 'Authorization': `Bearer ${this.authToken}` }
+      });
+      const farmersData = await farmersRes.json();
+      if (farmersData.success) {
+        this._daFarmersCache = farmersData.farmers;
+        this.renderDAFarmersTable(farmersData.farmers);
+      }
+
+      // Fetch buyers
+      const buyersRes = await fetch('/api/da/buyers', {
+        headers: { 'Authorization': `Bearer ${this.authToken}` }
+      });
+      const buyersData = await buyersRes.json();
+      if (buyersData.success) {
+        this._daBuyersCache = buyersData.buyers;
+        this.renderDABuyersTable(buyersData.buyers);
+      }
+
+      // Fetch crops (uses public endpoint with auth for full PII)
+      const cropsRes = await fetch('/api/farmers/registrations', {
+        headers: { 'Authorization': `Bearer ${this.authToken}` }
+      });
+      const cropsData = await cropsRes.json();
+      if (cropsData.success) {
+        this._daCropsCache = cropsData.registrations;
+        this.renderDACropsTable(cropsData.registrations);
+      }
+
+    } catch (err) {
+      console.error('DA Console data load error:', err);
+      this.showNotification('Failed to load DA database. Check connection.', 'error');
+    }
+  },
+
+  // Render farmers table
+  renderDAFarmersTable(farmers) {
+    const tbody = document.getElementById('da-farmers-tbody');
+    if (!tbody) return;
+
+    if (!farmers || farmers.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--color-text-secondary); padding: 24px;">No farmers registered yet.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = farmers.map(f => `
+      <tr>
+        <td><strong>${f.registrationId || '—'}</strong></td>
+        <td>${f.fullName}</td>
+        <td>${f.email}</td>
+        <td>${f.phone || '—'}</td>
+        <td>${f.createdAt ? new Date(f.createdAt).toLocaleDateString('en-PH') : '—'}</td>
+        <td><span style="color: #10b981; font-weight: 600;">${parseFloat(f.balance || 0).toFixed(2)} NCH</span></td>
+      </tr>
+    `).join('');
+  },
+
+  // Render buyers table
+  renderDABuyersTable(buyers) {
+    const tbody = document.getElementById('da-buyers-tbody');
+    if (!tbody) return;
+
+    if (!buyers || buyers.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: var(--color-text-secondary); padding: 24px;">No buyers registered yet.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = buyers.map(b => `
+      <tr>
+        <td><strong>${b.registrationId || '—'}</strong></td>
+        <td>${b.fullName}</td>
+        <td>${b.companyName || '—'}</td>
+        <td>${b.email}</td>
+        <td>${b.phone || '—'}</td>
+        <td>${b.province || '—'}</td>
+        <td>${b.businessType || '—'}</td>
+        <td>${b.monthlyVolume ? parseFloat(b.monthlyVolume).toFixed(1) : '—'}</td>
+      </tr>
+    `).join('');
+  },
+
+  // Render crops table
+  renderDACropsTable(crops) {
+    const tbody = document.getElementById('da-crops-tbody');
+    if (!tbody) return;
+
+    if (!crops || crops.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="10" style="text-align: center; color: var(--color-text-secondary); padding: 24px;">No crop registrations recorded.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = crops.map(c => {
+      const statusColor = c.verificationStatus === 'Geo-Verified' ? '#10b981' : c.verificationStatus === 'Pending' ? '#f59e0b' : '#ef4444';
+      return `
+        <tr>
+          <td><strong>${c.id}</strong></td>
+          <td>${c.farmerName}</td>
+          <td>${c.province}</td>
+          <td>${c.municipality || '—'}</td>
+          <td>${c.barangay || '—'}</td>
+          <td>${this.getVegetableName(c.vegetableId)}</td>
+          <td>${c.areaHa} ha</td>
+          <td>${c.expectedYieldTons} T</td>
+          <td>${c.plantingDate ? new Date(c.plantingDate).toLocaleDateString('en-PH') : '—'}</td>
+          <td><span style="color: ${statusColor}; font-weight: 600;">${c.verificationStatus}</span></td>
+        </tr>
+      `;
+    }).join('');
+  },
+
+  // Initialize DA subtab switching
+  initDASubtabs() {
+    document.querySelectorAll('.da-subtab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const targetId = btn.dataset.daSubtab;
+        // Toggle button styles
+        document.querySelectorAll('.da-subtab-btn').forEach(b => {
+          b.classList.remove('btn-primary');
+          b.classList.add('btn-outline');
+        });
+        btn.classList.remove('btn-outline');
+        btn.classList.add('btn-primary');
+        // Toggle panels
+        document.querySelectorAll('.da-subtab-panel').forEach(p => p.style.display = 'none');
+        const target = document.getElementById(targetId);
+        if (target) target.style.display = 'block';
+      });
+    });
+  },
+
+  // Search filter for DA Farmers table
+  filterDAFarmers() {
+    const query = (document.getElementById('da-farmers-search')?.value || '').toLowerCase();
+    const filtered = this._daFarmersCache.filter(f =>
+      (f.fullName || '').toLowerCase().includes(query) ||
+      (f.registrationId || '').toLowerCase().includes(query) ||
+      (f.email || '').toLowerCase().includes(query)
+    );
+    this.renderDAFarmersTable(filtered);
+  },
+
+  // Search filter for DA Buyers table
+  filterDABuyers() {
+    const query = (document.getElementById('da-buyers-search')?.value || '').toLowerCase();
+    const filtered = this._daBuyersCache.filter(b =>
+      (b.fullName || '').toLowerCase().includes(query) ||
+      (b.companyName || '').toLowerCase().includes(query) ||
+      (b.email || '').toLowerCase().includes(query)
+    );
+    this.renderDABuyersTable(filtered);
+  },
+
+  // Search filter for DA Crops table
+  filterDACrops() {
+    const query = (document.getElementById('da-crops-search')?.value || '').toLowerCase();
+    const filtered = this._daCropsCache.filter(c =>
+      (c.farmerName || '').toLowerCase().includes(query) ||
+      (c.vegetableId || '').toLowerCase().includes(query) ||
+      (c.province || '').toLowerCase().includes(query) ||
+      (c.municipality || '').toLowerCase().includes(query) ||
+      (c.id || '').toLowerCase().includes(query)
+    );
+    this.renderDACropsTable(filtered);
   },
 
   // Vegetable ID helper mapping

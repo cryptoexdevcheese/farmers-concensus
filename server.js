@@ -422,6 +422,15 @@ async function requireAuth(req, res, next) {
     }
 }
 
+// DA Admin Verification Middleware
+function requireDAAdmin(req, res, next) {
+    if (req.user && req.user.userType === 'admin') {
+        next();
+    } else {
+        res.status(403).json({ success: false, error: 'Access denied. DA Admin clearance required.' });
+    }
+}
+
 // Check if request is authenticated (without sending 401 response)
 async function isRequestAuthenticated(req) {
     if (req.session && req.session.isAdmin) {
@@ -1214,6 +1223,85 @@ app.get('/api/farmers/registrations', async (req, res) => {
     }
 });
 
+// ==========================================
+// DEPARTMENT OF AGRICULTURE (DA) ADMIN API
+// ==========================================
+
+// Get all farmers directory for DA Admin
+app.get('/api/da/farmers', requireAuth, requireDAAdmin, async (req, res) => {
+    try {
+        if (databaseAvailable) {
+            const result = await safeQuery(`
+                SELECT u.id, u.email, u.full_name as "fullName", u.phone, u.registration_id as "registrationId", u.created_at as "createdAt", b.balance, b.total_earned as "totalEarned"
+                FROM users u
+                LEFT JOIN user_balances b ON u.id = b.user_id
+                WHERE u.user_type = 'farmer'
+                ORDER BY u.created_at DESC
+            `);
+            res.json({ success: true, farmers: result.rows });
+        } else {
+            res.json({ success: true, farmers: [] });
+        }
+    } catch (err) {
+        console.error('DA fetch farmers error:', err);
+        res.status(500).json({ success: false, error: 'Failed to retrieve farmers directory' });
+    }
+});
+
+// Get all buyers directory for DA Admin
+app.get('/api/da/buyers', requireAuth, requireDAAdmin, async (req, res) => {
+    try {
+        if (databaseAvailable) {
+            const result = await safeQuery(`
+                SELECT u.id, u.email, u.full_name as "fullName", u.phone, u.registration_id as "registrationId", u.created_at as "createdAt", 
+                       br.company_name as "companyName", br.province, br.business_type as "businessType", br.monthly_volume as "monthlyVolume", br.products
+                FROM users u
+                LEFT JOIN buyers_registrations br ON u.id = br.user_id
+                WHERE u.user_type = 'buyer'
+                ORDER BY u.created_at DESC
+            `);
+            res.json({ success: true, buyers: result.rows });
+        } else {
+            res.json({ success: true, buyers: [] });
+        }
+    } catch (err) {
+        console.error('DA fetch buyers error:', err);
+        res.status(500).json({ success: false, error: 'Failed to retrieve buyers directory' });
+    }
+});
+
+// Get DA Admin dashboard statistics (Total counts of farmers, buyers, total registered hectares/tons)
+app.get('/api/da/stats', requireAuth, requireDAAdmin, async (req, res) => {
+    try {
+        if (databaseAvailable) {
+            const farmersCount = await safeQuery("SELECT COUNT(*) FROM users WHERE user_type = 'farmer'");
+            const buyersCount = await safeQuery("SELECT COUNT(*) FROM users WHERE user_type = 'buyer'");
+            const cropsCount = await safeQuery("SELECT COUNT(*) FROM farmers_registrations");
+            const yieldSum = await safeQuery("SELECT COALESCE(SUM(expected_yield_tons), 0) as total FROM farmers_registrations");
+            const areaSum = await safeQuery("SELECT COALESCE(SUM(area_ha), 0) as total FROM farmers_registrations");
+            
+            res.json({
+                success: true,
+                stats: {
+                    farmers: parseInt(farmersCount.rows[0].count) || 0,
+                    buyers: parseInt(buyersCount.rows[0].count) || 0,
+                    crops: parseInt(cropsCount.rows[0].count) || 0,
+                    totalYieldTons: parseFloat(yieldSum.rows[0].total) || 0,
+                    totalAreaHa: parseFloat(areaSum.rows[0].total) || 0
+                }
+            });
+        } else {
+            res.json({
+                success: true,
+                stats: { farmers: 0, buyers: 0, crops: 0, totalYieldTons: 0, totalAreaHa: 0 }
+            });
+        }
+    } catch (err) {
+        console.error('DA fetch stats error:', err);
+        res.status(500).json({ success: false, error: 'Failed to retrieve database stats' });
+    }
+});
+
 // Get single farmer crop registration by ID
 app.get('/api/farmers/registration/:id', async (req, res) => {
     try {
@@ -1660,7 +1748,7 @@ app.post('/api/auth/register', async (req, res) => {
         const sanitizedPhone = sanitizeInput(phone);
         let finalRegistrationId = null;
         
-        if (!['farmer', 'buyer', 'barangay'].includes(userType)) {
+        if (!['farmer', 'buyer', 'barangay', 'admin'].includes(userType)) {
             return res.status(400).json({ 
                 success: false, 
                 error: 'Invalid user type' 
@@ -1719,6 +1807,11 @@ app.post('/api/auth/register', async (req, res) => {
                 return res.status(400).json({
                     success: false,
                     error: 'Barangay officials do not require a registration ID'
+                });
+            } else if (userType === 'admin') {
+                return res.status(400).json({
+                    success: false,
+                    error: 'DA Admins do not require a registration ID'
                 });
             }
             finalRegistrationId = sanitizedRegistrationId;

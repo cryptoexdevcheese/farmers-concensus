@@ -194,6 +194,10 @@
         <i data-lucide="user"></i>
         <span>My Dashboard</span>
       </button>
+      <button class="tab-btn login-required hidden" data-tab="da-admin-tab" id="da-admin-tab-btn">
+        <i data-lucide="shield-check"></i>
+        <span>DA Admin Console</span>
+      </button>
     </nav>
 
     <!-- Main View Content -->
@@ -416,12 +420,14 @@
               </div>
             </div>
 
-            <!-- Yield Benchmark Standards Info Box -->
-            <div class="widget stats-widget">
+            <!-- Yield Benchmark Standards Info Box & DA Admin Entry -->
+            <div class="widget stats-widget" id="da-admin-portal-widget">
               <div class="widget-header" style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 15px; flex-direction: column; gap: 8px;">
-                <h3 style="margin: 0; font-size: 1.1rem;">DA Admin (Disclaimer: Not Official)</h3>
+                <h3 style="margin: 0; font-size: 1.1rem; color: var(--color-primary);">🏛️ Department of Agriculture Portal</h3>
+                
+                <!-- Region selector (Visible to all except when DA Admin is viewing database console) -->
                 <select id="da-region-filter" class="region-filter" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--color-border); background: var(--color-surface); color: var(--color-text);">
-                  <option value="all">All Regions</option>
+                  <option value="all">All Regions (National Benchmarks)</option>
                   <option value="ncr">National Capital Region (NCR)</option>
                   <option value="car">Cordillera Administrative Region (CAR)</option>
                   <option value="region1">Region I (Ilocos Region)</option>
@@ -441,29 +447,69 @@
                   <option value="barmm">BARMM</option>
                 </select>
               </div>
-              <div class="benchmark-list">
-                <div class="benchmark-item">
-                  <span class="benchmark-emoji" style="font-size: 1.5rem; margin-right: 12px; background: rgba(16, 185, 129, 0.1); width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; border-radius: 8px;">🥬</span>
-                  <span class="name">Cabbage</span>
-                  <span class="yield" id="da-yield-cabbage">20.5 Tons / Ha</span>
+
+              <!-- PUBLIC REFERENCE STATE: Yield Benchmarks (hidden for logged-in DA Admin) -->
+              <div id="da-widget-public-benchmarks">
+                <div class="benchmark-list">
+                  <div class="benchmark-item">
+                    <span class="benchmark-emoji" style="font-size: 1.5rem; margin-right: 12px; background: rgba(16, 185, 129, 0.1); width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; border-radius: 8px;">🥬</span>
+                    <span class="name">Cabbage</span>
+                    <span class="yield" id="da-yield-cabbage">20.5 Tons / Ha</span>
+                  </div>
+                  <div class="benchmark-item">
+                    <span class="benchmark-emoji" style="font-size: 1.5rem; margin-right: 12px; background: rgba(236, 72, 153, 0.1); width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; border-radius: 8px;">🧅</span>
+                    <span class="name">Onion (Sibuyas)</span>
+                    <span class="yield" id="da-yield-onion">16.5 Tons / Ha</span>
+                  </div>
+                  <div class="benchmark-item">
+                    <span class="benchmark-emoji" style="font-size: 1.5rem; margin-right: 12px; background: rgba(239, 68, 68, 0.1); width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; border-radius: 8px;">🍅</span>
+                    <span class="name">Tomato</span>
+                    <span class="yield" id="da-yield-tomato">25.0 Tons / Ha</span>
+                  </div>
+                  <div class="benchmark-item">
+                    <span class="benchmark-emoji" style="font-size: 1.5rem; margin-right: 12px; background: rgba(139, 92, 246, 0.1); width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; border-radius: 8px;">🍆</span>
+                    <span class="name">Eggplant (Talong)</span>
+                    <span class="yield" id="da-yield-eggplant">15.0 Tons / Ha</span>
+                  </div>
                 </div>
-                <div class="benchmark-item">
-                  <span class="benchmark-emoji" style="font-size: 1.5rem; margin-right: 12px; background: rgba(236, 72, 153, 0.1); width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; border-radius: 8px;">🧅</span>
-                  <span class="name">Onion (Sibuyas)</span>
-                  <span class="yield" id="da-yield-onion">16.5 Tons / Ha</span>
-                </div>
-                <div class="benchmark-item">
-                  <span class="benchmark-emoji" style="font-size: 1.5rem; margin-right: 12px; background: rgba(239, 68, 68, 0.1); width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; border-radius: 8px;">🍅</span>
-                  <span class="name">Tomato</span>
-                  <span class="yield" id="da-yield-tomato">25.0 Tons / Ha</span>
-                </div>
-                <div class="benchmark-item">
-                  <span class="benchmark-emoji" style="font-size: 1.5rem; margin-right: 12px; background: rgba(139, 92, 246, 0.1); width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; border-radius: 8px;">🍆</span>
-                  <span class="name">Eggplant (Talong)</span>
-                  <span class="yield" id="da-yield-eggplant">15.0 Tons / Ha</span>
+                <p class="footnote" style="margin-bottom: 12px;">* Based on regional statistics for high-yielding agricultural farms in Luzon & Mindanao.</p>
+                
+                <!-- Bottom lock prompt for non-DA users -->
+                <div class="da-lock-prompt" id="da-widget-lock-prompt" style="border-top: 1px solid var(--color-border); padding-top: 12px; margin-top: 12px; text-align: center;">
+                  <span style="font-size: 0.75rem; color: var(--color-text-secondary); display: block; margin-bottom: 8px;">🔒 DA Database Console Locked</span>
+                  <button class="btn btn-primary btn-sm" onclick="app.openModal('login-modal')" style="width: 100%; padding: 8px 12px; font-size: 0.8rem; border-radius: 6px;">
+                    <i data-lucide="shield-check" style="width: 14px; height: 14px; margin-right: 6px;"></i> Login as DA Admin
+                  </button>
                 </div>
               </div>
-              <p class="footnote">* Based on regional statistics for high-yielding agricultural farms in Luzon & Mindanao.</p>
+
+              <!-- AUTHORIZED DA STATE: Live database overview (shown only for user_type = 'admin') -->
+              <div id="da-widget-authorized-console" style="display: none;">
+                <div style="background: rgba(16, 185, 129, 0.06); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: 8px; padding: 12px; margin-bottom: 16px;">
+                  <span style="font-size: 0.75rem; color: #10b981; font-weight: 700; display: block; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px;">✓ DA Official Authenticated</span>
+                  
+                  <div style="display: flex; flex-direction: column; gap: 8px; font-size: 0.85rem; color: var(--color-text-secondary);">
+                    <div style="display: flex; justify-content: space-between;">
+                      <span>Total Farmers:</span>
+                      <strong id="da-widget-farmers-count" style="color: var(--color-text);">0</strong>
+                    </div>
+                    <div style="display: flex; justify-content: space-between;">
+                      <span>Total Buyers:</span>
+                      <strong id="da-widget-buyers-count" style="color: var(--color-text);">0</strong>
+                    </div>
+                    <div style="display: flex; justify-content: space-between;">
+                      <span>Crop Records:</span>
+                      <strong id="da-widget-crops-count" style="color: var(--color-text);">0</strong>
+                    </div>
+                  </div>
+                </div>
+
+                <button class="btn btn-primary btn-full" onclick="app.navigateToDAConsole()" style="padding: 10px 16px; font-size: 0.85rem; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                  <span>Access DA Database Console</span>
+                  <i data-lucide="arrow-right"></i>
+                </button>
+              </div>
+
             </div>
             
             <!-- Barangay Admin Panel Widget -->
@@ -1085,6 +1131,159 @@
 
       </section>
 
+      <!-- TAB 5: DEPARTMENT OF AGRICULTURE (DA) ADMIN CONSOLE -->
+      <section id="da-admin-tab" class="tab-panel login-required">
+        
+        <!-- DA Header -->
+        <div class="dashboard-header card" style="border-left: 4px solid var(--color-primary);">
+          <div class="dashboard-header-content">
+            <h2>Department of Agriculture (DA) Console</h2>
+            <p>Authorized access to the national crop registry and buyer databases</p>
+          </div>
+          <div class="dashboard-header-actions">
+            <button class="btn btn-outline" id="refresh-da-btn" onclick="app.loadDAConsoleData()">
+              <i data-lucide="refresh-cw"></i>
+              <span>Refresh Database</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- DA Stats Row -->
+        <div class="dashboard-stats" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px;">
+          <div class="stat-card">
+            <div class="stat-icon" style="background: rgba(16, 185, 129, 0.1); color: #10b981;">
+              <i data-lucide="users"></i>
+            </div>
+            <div class="stat-content">
+              <span class="stat-value" id="da-stat-farmers">0</span>
+              <span class="stat-label">Registered Farmers</span>
+            </div>
+          </div>
+          
+          <div class="stat-card">
+            <div class="stat-icon" style="background: rgba(59, 130, 246, 0.1); color: #3b82f6;">
+              <i data-lucide="building-2"></i>
+            </div>
+            <div class="stat-content">
+              <span class="stat-value" id="da-stat-buyers">0</span>
+              <span class="stat-label">Registered Buyers</span>
+            </div>
+          </div>
+
+          <div class="stat-card">
+            <div class="stat-icon" style="background: rgba(245, 158, 11, 0.1); color: #f59e0b;">
+              <i data-lucide="map"></i>
+            </div>
+            <div class="stat-content">
+              <span class="stat-value" id="da-stat-area">0.00 ha</span>
+              <span class="stat-label">Planted Area</span>
+            </div>
+          </div>
+
+          <div class="stat-card">
+            <div class="stat-icon" style="background: rgba(139, 92, 246, 0.1); color: #8b5cf6;">
+              <i data-lucide="sprout"></i>
+            </div>
+            <div class="stat-content">
+              <span class="stat-value" id="da-stat-yield">0.0 T</span>
+              <span class="stat-label">Expected Yield</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Database Tabs/Toggles -->
+        <div class="card" style="padding: 20px;">
+          <div style="display: flex; gap: 12px; margin-bottom: 20px; border-bottom: 1px solid var(--color-border); padding-bottom: 12px; overflow-x: auto;">
+            <button class="btn btn-sm btn-primary da-subtab-btn" data-da-subtab="da-farmers-list" style="padding: 8px 16px;">👨‍🌾 Farmers Directory</button>
+            <button class="btn btn-sm btn-outline da-subtab-btn" data-da-subtab="da-buyers-list" style="padding: 8px 16px;">🏢 Buyers Directory</button>
+            <button class="btn btn-sm btn-outline da-subtab-btn" data-da-subtab="da-crops-list" style="padding: 8px 16px;">🌾 Planted Crops</button>
+          </div>
+
+          <!-- SUBTAB 1: FARMERS DIRECTORY -->
+          <div id="da-farmers-list" class="da-subtab-panel">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+              <h3 style="margin: 0;">Farmers Directory</h3>
+              <input type="text" id="da-farmers-search" placeholder="Search farmers name..." onkeyup="app.filterDAFarmers()" style="padding: 6px 12px; border-radius: 6px; border: 1px solid var(--color-border); background: var(--color-surface); color: var(--color-text); font-size: 0.85rem; width: 220px;">
+            </div>
+            <div class="table-scroll-container">
+              <table class="ledger-table">
+                <thead>
+                  <tr>
+                    <th>Registration ID</th>
+                    <th>Full Name</th>
+                    <th>Email Address</th>
+                    <th>Phone Number</th>
+                    <th>Joined Date</th>
+                    <th>Wallet Balance</th>
+                  </tr>
+                </thead>
+                <tbody id="da-farmers-tbody">
+                  <!-- Dynamic rows -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- SUBTAB 2: BUYERS DIRECTORY -->
+          <div id="da-buyers-list" class="da-subtab-panel" style="display: none;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+              <h3 style="margin: 0;">Buyers Directory</h3>
+              <input type="text" id="da-buyers-search" placeholder="Search company name..." onkeyup="app.filterDABuyers()" style="padding: 6px 12px; border-radius: 6px; border: 1px solid var(--color-border); background: var(--color-surface); color: var(--color-text); font-size: 0.85rem; width: 220px;">
+            </div>
+            <div class="table-scroll-container">
+              <table class="ledger-table">
+                <thead>
+                  <tr>
+                    <th>Buyer ID</th>
+                    <th>Full Name</th>
+                    <th>Company Name</th>
+                    <th>Email Address</th>
+                    <th>Phone Number</th>
+                    <th>Province</th>
+                    <th>Business Type</th>
+                    <th>Monthly Vol (T)</th>
+                  </tr>
+                </thead>
+                <tbody id="da-buyers-tbody">
+                  <!-- Dynamic rows -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- SUBTAB 3: PLANTATIONS & CROPS -->
+          <div id="da-crops-list" class="da-subtab-panel" style="display: none;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+              <h3 style="margin: 0;">Planted Crops & Forecast Records</h3>
+              <input type="text" id="da-crops-search" placeholder="Search by farmer name or crop..." onkeyup="app.filterDACrops()" style="padding: 6px 12px; border-radius: 6px; border: 1px solid var(--color-border); background: var(--color-surface); color: var(--color-text); font-size: 0.85rem; width: 220px;">
+            </div>
+            <div class="table-scroll-container">
+              <table class="ledger-table">
+                <thead>
+                  <tr>
+                    <th>Registry ID</th>
+                    <th>Farmer Name</th>
+                    <th>Province</th>
+                    <th>Municipality</th>
+                    <th>Barangay</th>
+                    <th>Crop Variety</th>
+                    <th>Area (Ha)</th>
+                    <th>Yield Expected</th>
+                    <th>Planting Date</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="da-crops-tbody">
+                  <!-- Dynamic rows -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+        </div>
+
+      </section>
+
     </main>
 
     <!-- Platform Footer -->
@@ -1266,6 +1465,7 @@
             <option value="farmer">Farmer</option>
             <option value="buyer">Buyer</option>
             <option value="barangay">Barangay Official</option>
+            <option value="admin">DA Admin (Department of Agriculture)</option>
           </select>
         </div>
         
