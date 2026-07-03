@@ -15,7 +15,10 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Cheese Blockchain Configuration
-const CHEESE_API_URL = process.env.CHEESE_BLOCKCHAIN_API_URL || 'https://cheeseblockchain.com';
+let CHEESE_API_URL = process.env.CHEESE_BLOCKCHAIN_API_URL || 'https://cheeseblockchain.com';
+if (CHEESE_API_URL.includes('165.22.252.113')) {
+    CHEESE_API_URL = 'https://cheeseblockchain.com';
+}
 const TREASURY_WALLET = process.env.FARMERS_CONSENSUS_TREASURY_WALLET || '0x045D4e61757a873DAF5F3B59CCeD9f2585643cc3';
 const REGISTRATION_REWARD = parseInt(process.env.REGISTRATION_REWARD_AMOUNT) || 10;
 
