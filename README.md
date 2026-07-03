@@ -28,7 +28,7 @@ A revolutionary Philippine agricultural platform that integrates crop registrati
 
 ### Prerequisites
 - Node.js v14+ installed
-- Cheese Blockchain server running (http://165.22.252.113:8080)
+- Cheese Blockchain server running (https://cheeseblockchain.com)
 
 ### Setup
 

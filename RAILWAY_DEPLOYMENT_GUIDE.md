@@ -71,10 +71,7 @@
 # Database Configuration (Auto-populated by Railway)
 DATABASE_URL=postgresql://user:password@host:port/database
 
-# Cheese Blockchain Configuration
-# Note: DigitalOcean node handles internal redundancy (DO → Render → Local → Firebase)
-CHEESE_BLOCKCHAIN_API_URL=http://165.22.252.113:8080
-CHEESE_BLOCKCHAIN_API_URL=http://165.22.252.113:8080
+CHEESE_BLOCKCHAIN_API_URL=https://cheeseblockchain.com
 CHEESE_BLOCKCHAIN_API_KEY=
 
 # Server Configuration
